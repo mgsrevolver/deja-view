@@ -1,0 +1,120 @@
+// Déjà View Database Schema
+// PostgreSQL via Supabase
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Raw GPS pings (for path drawing and distance calculations)
+model Location {
+  id           String   @id @default(uuid())
+  lat          Float
+  lon          Float
+  timestamp    DateTime
+  source       String   // "path", "activity_start", "activity_end"
+  activityType String?  // "WALKING", "BIKING", "IN_VEHICLE" (for activity points)
+  createdAt    DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([lat, lon])
+}
+
+// Visit records - time spent at a specific place
+model Visit {
+  id              String   @id @default(uuid())
+  placeID         String   // Google Place ID (may not exist in Place table yet)
+  lat             Float    // Visit location
+  lon             Float
+  startTime       DateTime
+  endTime         DateTime?
+  durationMinutes Int?     // Calculated from start/end
+
+  semanticType    String?  // "Inferred Home", "Work", "Unknown Location"
+  probability     Float?   // Confidence score from Google
+
+  place           Place?   @relation(fields: [placeID], references: [id])
+
+  createdAt       DateTime @default(now())
+
+  @@index([placeID])
+  @@index([startTime])
+  @@index([endTime])
+}
+
+// Unique places (enriched with Google Places API data)
+model Place {
+  id              String   @id // Google Place ID
+
+  // Google Places API data (enriched after import)
+  name            String?
+  defaultImageUrl String?
+  address         String?
+  types           String[] // ["restaurant", "cafe"]
+
+  // Visit statistics (calculated from Visit records)
+  firstVisit      DateTime?
+  lastVisit       DateTime?
+  totalVisits     Int      @default(0)
+  uniqueDays      Int      @default(0)
+  longestStreak   Int      @default(0)
+
+  visits          Visit[]
+  enrichments     Enrichment[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([name])
+}
+
+// Day-level aggregations (one record per date)
+model DayData {
+  id              String   @id @default(uuid())
+  date            DateTime @unique // Date at midnight UTC
+
+  // Distance analytics (calculated from activity segments)
+  distanceByType  Json     // {"walking": 5200, "biking": 12000, "driving": 45000} meters
+  totalDistance   Int      @default(0) // meters
+
+  // Weather data (from Open-Meteo API)
+  weather         Json?    // {"tempMax": 72, "tempMin": 58, "condition": "Partly Cloudy", "precipitation": 0}
+
+  // Spotify data
+  spotifyTracks   Json?    // [{name, artist, album, playedAt}, ...]
+  topArtists      String[]
+
+  // News/context (future)
+  newsHeadlines   Json?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([date])
+}
+
+// Enrichment tracker (prevents duplicate API calls)
+model Enrichment {
+  id          String   @id @default(uuid())
+  type        String   // "google_places", "weather", "spotify", "distance"
+  status      String   // "pending", "complete", "failed", "rate_limited"
+
+  visitId     String?   // For visit-level enrichments
+
+  placeId     String?
+  place       Place?    @relation(fields: [placeId], references: [id])
+
+  date        DateTime? // For day-level enrichments
+  metadata    Json?     // Error messages, API response details
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([type, status])
+  @@index([visitId])
+  @@index([date])
+}
