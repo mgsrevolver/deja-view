@@ -1,20 +1,25 @@
 import { useQuery } from '@tanstack/react-query'
 import { format, parseISO, addDays, subDays } from 'date-fns'
+import { fetchWithAuth } from '../lib/api'
+import { useAuth } from '../contexts/AuthContext'
 import MapPane from './MapPane'
 import Sidebar from './Sidebar'
 import CalendarPicker from './CalendarPicker'
 import { useState } from 'react'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
-
 export default function JournalView({ selectedDate, onDateChange, stats }) {
+  const { user, signOut } = useAuth()
   const [showCalendar, setShowCalendar] = useState(false)
   const [selectedVisit, setSelectedVisit] = useState(null)
+
+  const handleSignOut = async () => {
+    await signOut()
+  }
 
   // Fetch day data when date is selected
   const { data: dayData, isLoading } = useQuery({
     queryKey: ['day', selectedDate],
-    queryFn: () => fetch(`${API_BASE}/api/days/${selectedDate}`).then(r => r.json()),
+    queryFn: () => fetchWithAuth(`/api/days/${selectedDate}`),
     enabled: !!selectedDate
   })
 
@@ -72,6 +77,12 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
           <span className="stats-badge">
             {stats.totalVisits.toLocaleString()} visits
           </span>
+          <div className="user-menu">
+            <span className="user-email">{user?.email}</span>
+            <button className="sign-out-btn" onClick={handleSignOut} title="Sign out">
+              Sign Out
+            </button>
+          </div>
         </div>
       </header>
 

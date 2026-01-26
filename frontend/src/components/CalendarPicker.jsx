@@ -11,8 +11,7 @@ import {
   subMonths,
   getDay
 } from 'date-fns'
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+import { fetchWithAuth } from '../lib/api'
 
 export default function CalendarPicker({ selectedDate, onSelect, onClose }) {
   const [viewMonth, setViewMonth] = useState(
@@ -24,7 +23,7 @@ export default function CalendarPicker({ selectedDate, onSelect, onClose }) {
   // Fetch days with data for this month
   const { data: daysWithData } = useQuery({
     queryKey: ['days', monthKey],
-    queryFn: () => fetch(`${API_BASE}/api/days?month=${monthKey}`).then(r => r.json())
+    queryFn: () => fetchWithAuth(`/api/days?month=${monthKey}`)
   })
 
   // Create a map of dates with visit counts

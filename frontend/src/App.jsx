@@ -1,24 +1,27 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useAuth } from './contexts/AuthContext'
+import { fetchWithAuth } from './lib/api'
 import JournalView from './components/JournalView'
+import LoginPage from './components/LoginPage'
 import './App.css'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
-
 function App() {
+  const { user, loading: authLoading } = useAuth()
   const [selectedDate, setSelectedDate] = useState(null)
 
-  // Fetch stats to get date range
+  // Fetch stats to get date range (only when authenticated)
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['stats'],
-    queryFn: () => fetch(`${API_BASE}/api/stats`).then(r => r.json())
+    queryFn: () => fetchWithAuth('/api/stats'),
+    enabled: !!user
   })
 
-  // Fetch interesting day to start with
+  // Fetch interesting day to start with (only when authenticated)
   const { data: interestingDay } = useQuery({
     queryKey: ['interesting-day'],
-    queryFn: () => fetch(`${API_BASE}/api/interesting-day`).then(r => r.json()),
-    enabled: !selectedDate
+    queryFn: () => fetchWithAuth('/api/interesting-day'),
+    enabled: !!user && !selectedDate
   })
 
   // Set initial date to interesting day once loaded
@@ -28,6 +31,24 @@ function App() {
     }
   }, [interestingDay, selectedDate])
 
+  // Auth loading
+  if (authLoading) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-content">
+          <h1>Deja View</h1>
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Not authenticated
+  if (!user) {
+    return <LoginPage />
+  }
+
+  // Data loading
   if (statsLoading) {
     return (
       <div className="loading-screen">
@@ -39,6 +60,7 @@ function App() {
     )
   }
 
+  // No data
   if (!stats?.totalVisits) {
     return (
       <div className="empty-screen">

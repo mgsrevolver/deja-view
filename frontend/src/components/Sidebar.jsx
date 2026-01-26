@@ -27,27 +27,58 @@ export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClic
 
         {/* Distance Card */}
         <div className="summary-card distance-card">
-          <h3>Distance Traveled</h3>
-          <div className="distance-total">
-            {formatDistance(totalDistance)}
+          <div className="distance-header">
+            <h3>Distance Traveled</h3>
+            <span className="distance-total">{formatDistance(totalDistance)}</span>
           </div>
+
           <div className="distance-breakdown">
             {distanceByType.walking > 0 && (
-              <div className="distance-item walking">
-                <span className="icon">🚶</span>
-                <span>{formatDistance(distanceByType.walking)}</span>
+              <div className="distance-row">
+                <div className="distance-row-left">
+                  <span className="distance-indicator walking"></span>
+                  <span className="distance-emoji">🚶</span>
+                  <span className="distance-label">Walking</span>
+                </div>
+                <div className="distance-row-right">
+                  <span className="distance-value">{formatDistance(distanceByType.walking)}</span>
+                </div>
+                <div
+                  className="distance-bar walking"
+                  style={{ width: `${(distanceByType.walking / totalDistance) * 100}%` }}
+                />
               </div>
             )}
             {distanceByType.cycling > 0 && (
-              <div className="distance-item cycling">
-                <span className="icon">🚴</span>
-                <span>{formatDistance(distanceByType.cycling)}</span>
+              <div className="distance-row">
+                <div className="distance-row-left">
+                  <span className="distance-indicator cycling"></span>
+                  <span className="distance-emoji">🚴</span>
+                  <span className="distance-label">Cycling</span>
+                </div>
+                <div className="distance-row-right">
+                  <span className="distance-value">{formatDistance(distanceByType.cycling)}</span>
+                </div>
+                <div
+                  className="distance-bar cycling"
+                  style={{ width: `${(distanceByType.cycling / totalDistance) * 100}%` }}
+                />
               </div>
             )}
             {(distanceByType.in_vehicle > 0 || distanceByType.driving > 0) && (
-              <div className="distance-item driving">
-                <span className="icon">🚗</span>
-                <span>{formatDistance(distanceByType.in_vehicle || distanceByType.driving)}</span>
+              <div className="distance-row">
+                <div className="distance-row-left">
+                  <span className="distance-indicator driving"></span>
+                  <span className="distance-emoji">🚗</span>
+                  <span className="distance-label">Driving</span>
+                </div>
+                <div className="distance-row-right">
+                  <span className="distance-value">{formatDistance(distanceByType.in_vehicle || distanceByType.driving)}</span>
+                </div>
+                <div
+                  className="distance-bar driving"
+                  style={{ width: `${((distanceByType.in_vehicle || distanceByType.driving) / totalDistance) * 100}%` }}
+                />
               </div>
             )}
           </div>

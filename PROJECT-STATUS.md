@@ -2,7 +2,7 @@
 
 **Project Name**: Deja View _(You've been here before)_
 **Last Updated**: 2026-01-26
-**Current Phase**: Phase 3 In Progress - Place Enrichment Complete
+**Current Phase**: Phase 4 Complete - Multi-Tenancy & Authentication
 
 ---
 
@@ -35,6 +35,39 @@
 - Enrichment tracking in database to prevent duplicate API calls
 - Places cached globally for future users
 
+### Phase 4 - Multi-Tenancy & Authentication
+**Database Security:**
+- Added User model linked to Supabase Auth UUID
+- Row Level Security (RLS) on all 6 tables
+- Users can only access their own data
+- Auth trigger auto-creates User record on Supabase signup
+- Place table remains globally readable (shared cache)
+
+**Backend Auth:**
+- Supabase JWT validation middleware
+- All `/api/*` routes require Bearer token
+- Queries scoped to authenticated user
+- CORS restricted to known origins
+- Place stats added to API: firstVisitDate, lastVisitDate, totalVisits, totalMinutes
+
+**Frontend Auth:**
+- Complete login/signup flow with Supabase Auth
+- `AuthContext` with user state and auth methods
+- `fetchWithAuth()` helper injects Bearer tokens
+- User menu in header (email + sign out)
+- Protected routes (shows LoginPage when unauthenticated)
+
+**UI Improvements:**
+- Interactive timeline: click visit → map zooms + overlay appears
+- Visit overlay: photo, name, address, duration, place stats
+- Selected visit highlighting (purple)
+- Distance card redesign: clear rows with indicators, emoji, labels
+- Distance units: miles (feet for short distances)
+
+**Migration Scripts:**
+- `scripts/apply-rls.js` - Applies RLS policies
+- `scripts/migrate-user-data.js` - Assigns existing data to user account
+
 ---
 
 ## Current Stats
@@ -50,17 +83,16 @@
 
 ## Next Steps
 
-### Phase 3 - Remaining Tasks
-1. **OSM Nominatim fallback** - For failed Place IDs and free tier users
-2. **Display place photos** - Photo URLs are stored, need to show in VisitCard
-3. **Show addresses in UI** - Already stored, just need to display
-
-### Phase 4 - Weather Enrichment
+### Phase 5 - Weather Enrichment
 - Open-Meteo API (free, historical data)
 - Store in DayData table
 - Display in weather card
 
-### Phase 5 - Tier 2 Access (Non-technical users)
+### Phase 6 - Remaining Place Enrichment
+1. **OSM Nominatim fallback** - For failed Place IDs and free tier users
+2. **Display place photos** - Photo URLs are stored, overlay shows placeholder
+
+### Phase 7 - Tier 2 Access (Non-technical users)
 - OAuth flow for Google Cloud connection, OR
 - Prepaid credits system, OR
 - Partner pricing with Google
@@ -70,8 +102,8 @@
 - Spotify listening history integration
 - Photo integration (Google Photos API or local)
 - Background import with progress bar (for web UI)
-- User authentication (Supabase Auth)
 - Export/sharing features
+- User profile/settings page
 
 ---
 
@@ -88,6 +120,15 @@ cd backend && npm run dev
 cd frontend && npm run dev
 
 # Open http://localhost:5173
+# Sign up with email/password (Supabase Auth)
+```
+
+### Migrate Existing Data to User
+
+```bash
+cd backend
+# Get user's Supabase Auth UUID from Supabase dashboard
+node scripts/migrate-user-data.js <user-uuid>
 ```
 
 ### Import Data
@@ -153,23 +194,33 @@ node scripts/enrich-places.js --limit=100
 frontend/
   src/
     components/
-      JournalView.jsx   # Main split-screen layout
-      MapPane.jsx       # Leaflet map with markers/paths
-      Sidebar.jsx       # Day summary + timeline
-      VisitCard.jsx     # Individual visit display
+      JournalView.jsx    # Main split-screen layout
+      MapPane.jsx        # Leaflet map with markers/paths/overlays
+      Sidebar.jsx        # Day summary + timeline
+      VisitCard.jsx      # Individual visit display
       CalendarPicker.jsx # Date navigation modal
-    App.jsx             # Root component with React Query
+      LoginPage.jsx      # Auth login/signup form
+    contexts/
+      AuthContext.jsx    # Auth state + useAuth hook
+    lib/
+      supabase.js        # Supabase client init
+      api.js             # fetchWithAuth() helper
+    App.jsx              # Root with auth gating
+    main.jsx             # AuthProvider + QueryClientProvider
 
 backend/
   src/
-    server.js           # Express API server
+    server.js            # Express API + JWT auth middleware
     services/
       location-import.js   # Google Takeout parser
       place-enrichment.js  # Google Places + OSM integration
   scripts/
-    enrich-places.js    # CLI for batch enrichment
+    enrich-places.js       # CLI for batch enrichment
+    apply-rls.js           # Apply RLS policies to Supabase
+    migrate-user-data.js   # Assign existing data to user
   prisma/
-    schema.prisma       # Database schema
+    schema.prisma          # Database schema (6 tables + User)
+    rls-policies.sql       # Row Level Security policies
 
 scripts/
   import-google-takeout.js # CLI import tool
@@ -179,13 +230,15 @@ scripts/
 
 ## API Endpoints
 
+All `/api/*` routes require `Authorization: Bearer <token>` header (Supabase JWT).
+
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/stats` | Overall stats (total visits, date range) |
 | `GET /api/days?month=YYYY-MM` | Days with visit counts for calendar |
-| `GET /api/days/:date` | Full day data (visits, path, distance) |
+| `GET /api/days/:date` | Full day data (visits, path, distance, place stats) |
 | `GET /api/interesting-day` | Day with most unique places |
-| `GET /health` | Health check |
+| `GET /health` | Health check (unauthenticated) |
 
 ---
 
@@ -196,10 +249,15 @@ scripts/
 DATABASE_URL=postgresql://...
 SUPABASE_URL=https://...
 SUPABASE_PUBLISHABLE_KEY=...
-SUPABASE_SECRET_KEY=...
-GOOGLE_PLACES_API_KEY=...  # For place enrichment
+SUPABASE_SECRET_KEY=...        # For JWT validation
+GOOGLE_PLACES_API_KEY=...      # For place enrichment
 PORT=3001
 NODE_ENV=development
+
+# frontend/.env.local
+VITE_API_URL=http://localhost:3001
+VITE_SUPABASE_URL=https://...
+VITE_SUPABASE_ANON_KEY=...     # Same as SUPABASE_PUBLISHABLE_KEY
 ```
 
 ## Agent Role Definitions
@@ -286,12 +344,13 @@ claude "Read PROJECT-STATUS.md. You have the [ROLE] role today."
 - Port: 3001
 - Path: `backend/src/`
 
-**Schema** (5 tables):
-- `Location` - Raw lat/lng points from Google Takeout
-- `Visit` - Semantic visits to places (inferred stops)
-- `Place` - Unique locations with enrichment data
-- `DayData` - Daily aggregates, weather data
-- `Enrichment` - API call tracking to prevent duplicates
+**Schema** (6 tables):
+- `User` - Linked to Supabase Auth UUID
+- `Location` - Raw lat/lng points (user-scoped via RLS)
+- `Visit` - Semantic visits to places (user-scoped via RLS)
+- `Place` - Unique locations with enrichment data (globally shared)
+- `DayData` - Daily aggregates, weather data (user-scoped via RLS)
+- `Enrichment` - API call tracking to prevent duplicates (user-scoped via RLS)
 
 **Services**:
 - `location-import.js` - Google Takeout parser (18k visits in ~15s)
