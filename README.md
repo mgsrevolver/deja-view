@@ -1,6 +1,8 @@
-# Location-Based Journaling App
+# Déjà View
 
 Transform your Google Location History into an enriched, browseable journal with place details, weather data, distance analytics, and more.
+
+**Déjà View** - _You've been here before._ Browse your entire location history as an interactive, time-traveling journal.
 
 ## Project Structure
 

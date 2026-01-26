@@ -1,5 +1,6 @@
-# Project Status - Location-Based Journaling App
+# Project Status - Déjà View
 
+**Project Name**: Déjà View _(You've been here before)_
 **Last Updated**: 2026-01-26
 **Current Phase**: Phase 1 - Foundation (Day 1)
 
@@ -13,6 +14,7 @@
 - ✅ Created directory structure (`frontend/`, `backend/`, `scripts/`)
 - ✅ Added `.gitignore` file
 - ✅ Created README.md
+- ✅ Named project "Déjà View" and updated documentation
 
 ---
 
@@ -25,7 +27,7 @@
 2. Click "New Project"
 3. Configure:
    - **Organization**: (your choice)
-   - **Project name**: `location-journal` (or similar)
+   - **Project name**: `deja-view` (or similar)
    - **Database password**: Generate a strong password and **save it securely**
    - **Region**: Choose closest to you (US East recommended)
 4. Wait for project to provision (~2 minutes)
