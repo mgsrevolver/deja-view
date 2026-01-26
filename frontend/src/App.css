@@ -322,11 +322,34 @@ body {
   padding: 1rem;
   background: var(--bg-tertiary);
   border-radius: 12px;
-  transition: transform 0.2s;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
 }
 
 .visit-card:hover {
   transform: translateX(4px);
+  background: #3d4a5c;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.visit-card:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.visit-card.selected {
+  background: var(--accent);
+  transform: translateX(4px);
+}
+
+.visit-card.selected .visit-address,
+.visit-card.selected .type-badge {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.visit-card.selected .time-end {
+  color: var(--text-secondary);
 }
 
 .visit-time {
@@ -547,6 +570,139 @@ body {
 
 .sidebar-pane::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* Visit Overlay on Map */
+.visit-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  width: 420px;
+  max-width: calc(100% - 48px);
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.overlay-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.overlay-close:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.overlay-image {
+  width: 100%;
+  height: 280px;
+  overflow: hidden;
+}
+
+.overlay-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.overlay-content {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.overlay-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.overlay-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.overlay-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.overlay-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.overlay-address {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.overlay-visit-duration {
+  font-size: 0.9375rem;
+  color: var(--accent-light);
+  font-weight: 500;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Place Stats Grid */
+.overlay-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.overlay-stat {
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.overlay-stat-label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.overlay-stat-value {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.overlay-stat-value.highlight {
+  color: var(--accent-light);
 }
 
 /* Responsive */

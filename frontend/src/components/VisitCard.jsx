@@ -1,6 +1,6 @@
 import { format, parseISO } from 'date-fns'
 
-export default function VisitCard({ visit, index, onDateChange }) {
+export default function VisitCard({ visit, isSelected, onClick }) {
   const startTime = format(parseISO(visit.startTime), 'h:mm a')
   const endTime = visit.endTime ? format(parseISO(visit.endTime), 'h:mm a') : null
 
@@ -12,7 +12,13 @@ export default function VisitCard({ visit, index, onDateChange }) {
   const icon = getSemanticIcon(visit.semanticType)
 
   return (
-    <div className="visit-card">
+    <div
+      className={`visit-card ${isSelected ? 'selected' : ''}`}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onClick()}
+    >
       <div className="visit-time">
         <span className="time-start">{startTime}</span>
         {endTime && <span className="time-end">{endTime}</span>}

@@ -1,7 +1,6 @@
-import { format, parseISO } from 'date-fns'
 import VisitCard from './VisitCard'
 
-export default function Sidebar({ dayData, isLoading, onDateChange }) {
+export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClick }) {
   if (isLoading) {
     return (
       <div className="sidebar">
@@ -102,8 +101,8 @@ export default function Sidebar({ dayData, isLoading, onDateChange }) {
               <VisitCard
                 key={visit.id || idx}
                 visit={visit}
-                index={idx + 1}
-                onDateChange={onDateChange}
+                isSelected={selectedVisit?.id === visit.id}
+                onClick={() => onVisitClick(selectedVisit?.id === visit.id ? null : visit)}
               />
             ))
           )}
@@ -114,7 +113,11 @@ export default function Sidebar({ dayData, isLoading, onDateChange }) {
 }
 
 function formatDistance(meters) {
-  if (!meters || meters === 0) return '0 km'
-  if (meters < 1000) return `${Math.round(meters)} m`
-  return `${(meters / 1000).toFixed(1)} km`
+  if (!meters || meters === 0) return '0 mi'
+  const miles = meters / 1609.34
+  if (miles < 0.1) {
+    const feet = meters * 3.28084
+    return `${Math.round(feet)} ft`
+  }
+  return `${miles.toFixed(1)} mi`
 }

@@ -5,10 +5,11 @@ import Sidebar from './Sidebar'
 import CalendarPicker from './CalendarPicker'
 import { useState } from 'react'
 
-const API_BASE = 'http://localhost:3001'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 export default function JournalView({ selectedDate, onDateChange, stats }) {
   const [showCalendar, setShowCalendar] = useState(false)
+  const [selectedVisit, setSelectedVisit] = useState(null)
 
   // Fetch day data when date is selected
   const { data: dayData, isLoading } = useQuery({
@@ -17,22 +18,27 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
     enabled: !!selectedDate
   })
 
+  const handleDateChange = (newDate) => {
+    setSelectedVisit(null)
+    onDateChange(newDate)
+  }
+
   const handlePrevDay = () => {
     if (selectedDate) {
       const prev = subDays(parseISO(selectedDate), 1)
-      onDateChange(format(prev, 'yyyy-MM-dd'))
+      handleDateChange(format(prev, 'yyyy-MM-dd'))
     }
   }
 
   const handleNextDay = () => {
     if (selectedDate) {
       const next = addDays(parseISO(selectedDate), 1)
-      onDateChange(format(next, 'yyyy-MM-dd'))
+      handleDateChange(format(next, 'yyyy-MM-dd'))
     }
   }
 
   const handleToday = () => {
-    onDateChange(format(new Date(), 'yyyy-MM-dd'))
+    handleDateChange(format(new Date(), 'yyyy-MM-dd'))
   }
 
   const formattedDate = selectedDate
@@ -76,6 +82,8 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
             visits={dayData?.visits || []}
             path={dayData?.path || []}
             isLoading={isLoading}
+            selectedVisit={selectedVisit}
+            onCloseOverlay={() => setSelectedVisit(null)}
           />
         </div>
 
@@ -83,7 +91,8 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
           <Sidebar
             dayData={dayData}
             isLoading={isLoading}
-            onDateChange={onDateChange}
+            selectedVisit={selectedVisit}
+            onVisitClick={setSelectedVisit}
           />
         </div>
       </main>
@@ -93,12 +102,10 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
         <CalendarPicker
           selectedDate={selectedDate}
           onSelect={(date) => {
-            onDateChange(date)
+            handleDateChange(date)
             setShowCalendar(false)
           }}
           onClose={() => setShowCalendar(false)}
-          minDate={stats.firstDate}
-          maxDate={stats.lastDate}
         />
       )}
     </div>

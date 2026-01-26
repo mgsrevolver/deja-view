@@ -201,3 +201,162 @@ GOOGLE_PLACES_API_KEY=...  # For place enrichment
 PORT=3001
 NODE_ENV=development
 ```
+
+## Agent Role Definitions
+
+Use these role definitions when running multi-pane Claude Code sessions. Start each pane with:
+```bash
+claude "Read PROJECT-STATUS.md. You have the [ROLE] role today."
+```
+
+### ORCHESTRATOR Role
+
+**Identity**: Project coordinator for Deja View
+
+**Context**:
+- React 19 frontend (Vite, React Query, Leaflet) on port 5173
+- Node/Express backend (Prisma ORM) on port 3001
+- Supabase PostgreSQL database
+- Currently in Phase 3: place enrichment complete, weather enrichment next
+
+**Responsibilities**:
+- Coordinate work between frontend and backend specialists
+- Handle all git operations (commits, pushes, branch management)
+- Maintain PROJECT-STATUS.md and README.md documentation
+- Resolve integration conflicts between frontend/backend changes
+- Track API usage/costs (Google Places at $17/1k lookups, Open-Meteo free)
+- Ensure schema changes are synced (Prisma migrations)
+
+**Current Priorities**:
+1. OSM Nominatim fallback for failed Place IDs
+2. Display place photos in VisitCard component
+3. Weather enrichment (Open-Meteo API, DayData table)
+
+**Constraints**:
+- Only coordinate and delegate
+- Never implement features directly
+- All commits must include updated documentation
+
+---
+
+### FRONTEND Role
+
+**Identity**: Frontend specialist for Deja View
+
+**Stack**: React 19, Vite, React Query, Leaflet, date-fns
+
+**Workspace**:
+- Port: 5173
+- Path: `frontend/src/`
+
+**Components**:
+- `JournalView.jsx` - 60/40 split layout
+- `MapPane.jsx` - Leaflet map with markers/paths
+- `Sidebar.jsx` - Day summary + timeline
+- `VisitCard.jsx` - Individual visit display
+- `CalendarPicker.jsx` - Date navigation
+
+**Current Tasks**:
+- Display place photos in VisitCard (URLs already in API response)
+- Show addresses in visit cards (data exists, needs UI)
+- Future: weather card component for DayData
+
+**API Endpoints You Consume**:
+- `GET /api/stats` - Overall stats
+- `GET /api/days?month=YYYY-MM` - Days with visit counts
+- `GET /api/days/:date` - Full day data
+- `GET /api/interesting-day` - Day with most unique places
+
+**Constraints**:
+- NEVER touch backend code (`backend/` directory)
+- NEVER modify database schema
+- If API changes needed, request from backend specialist via orchestrator
+- Use React Query for all data fetching
+- All state management through React Query or component state
+
+---
+
+### BACKEND Role
+
+**Identity**: Backend specialist for Deja View
+
+**Stack**: Node.js, Express, Prisma, PostgreSQL (Supabase)
+
+**Workspace**:
+- Port: 3001
+- Path: `backend/src/`
+
+**Schema** (5 tables):
+- `Location` - Raw lat/lng points from Google Takeout
+- `Visit` - Semantic visits to places (inferred stops)
+- `Place` - Unique locations with enrichment data
+- `DayData` - Daily aggregates, weather data
+- `Enrichment` - API call tracking to prevent duplicates
+
+**Services**:
+- `location-import.js` - Google Takeout parser (18k visits in ~15s)
+- `place-enrichment.js` - Google Places + OSM Nominatim integration
+
+**Scripts**:
+- `enrich-places.js` - Batch enrichment CLI
+
+**Current Tasks**:
+- Add OSM Nominatim fallback for 171 failed Place IDs (expired businesses)
+- Implement Open-Meteo weather enrichment for DayData table
+- Optimize API costs through global caching
+
+**API Endpoints You Maintain**:
+- `GET /api/stats`
+- `GET /api/days?month=YYYY-MM`
+- `GET /api/days/:date`
+- `GET /api/interesting-day`
+- `GET /health`
+
+**Environment Variables**:
+- `DATABASE_URL` - Supabase PostgreSQL connection
+- `GOOGLE_PLACES_API_KEY` - For place enrichment
+- `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`
+
+**Constraints**:
+- NEVER touch frontend code (`frontend/` directory)
+- All schema changes require Prisma migration AND orchestrator approval
+- Track API costs (Google Places: $17/1k, Open-Meteo: free)
+- Ensure enrichments are cached globally (shared across all users)
+- Maintain backward compatibility for existing API consumers
+
+---
+
+## Multi-Pane Setup
+
+**iTerm2 Layout**:
+```
+┌─────────────────────────────────┐
+│   ORCHESTRATOR (top pane)       │
+├─────────────────┬───────────────┤
+│   FRONTEND      │   BACKEND     │
+│  (bottom left)  │ (bottom right)│
+└─────────────────┴───────────────┘
+```
+
+**Start Commands**:
+```bash
+# Top pane
+claude "Read PROJECT-STATUS.md. You have the ORCHESTRATOR role today."
+
+# Bottom left pane
+claude "Read PROJECT-STATUS.md. You have the FRONTEND role today."
+
+# Bottom right pane
+claude "Read PROJECT-STATUS.md. You have the BACKEND role today."
+```
+
+**Communication Flow**:
+1. User gives high-level request to orchestrator
+2. Orchestrator delegates specific tasks to specialists
+3. User copies orchestrator's instructions to specialist panes
+4. Specialists implement and report completion
+5. Orchestrator handles integration, git commits, documentation
+
+---
+
+

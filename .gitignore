@@ -29,3 +29,7 @@ prisma/migrations/
 
 # Test coverage
 coverage/
+
+# Sensitive location data
+records.json
+scripts/*.json

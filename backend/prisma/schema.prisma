@@ -10,9 +10,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// User model - links to Supabase Auth
+model User {
+  id        String   @id // Supabase Auth UUID (not auto-generated)
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations   Location[]
+  visits      Visit[]
+  dayData     DayData[]
+  enrichments Enrichment[]
+}
+
 // Raw GPS pings (for path drawing and distance calculations)
 model Location {
   id           String   @id @default(uuid())
+  userId       String?  // Nullable during migration, will be required after data migration
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   lat          Float
   lon          Float
   timestamp    DateTime
@@ -20,13 +35,15 @@ model Location {
   activityType String?  // "WALKING", "BIKING", "IN_VEHICLE" (for activity points)
   createdAt    DateTime @default(now())
 
-  @@index([timestamp])
-  @@index([lat, lon])
+  @@index([userId, timestamp]) // Primary query pattern
+  @@index([userId, lat, lon])  // Spatial queries scoped to user
 }
 
 // Visit records - time spent at a specific place
 model Visit {
   id              String   @id @default(uuid())
+  userId          String?  // Nullable during migration, will be required after data migration
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   placeID         String   // Google Place ID (may not exist in Place table yet)
   lat             Float    // Visit location
   lon             Float
@@ -41,9 +58,9 @@ model Visit {
 
   createdAt       DateTime @default(now())
 
-  @@index([placeID])
-  @@index([startTime])
-  @@index([endTime])
+  @@index([userId, startTime]) // Primary query pattern
+  @@index([userId, placeID])   // User's visits to a place
+  @@index([placeID])           // Keep for place-level queries
 }
 
 // Unique places (enriched with Google Places API data)
@@ -72,10 +89,12 @@ model Place {
   @@index([name])
 }
 
-// Day-level aggregations (one record per date)
+// Day-level aggregations (one record per user per date)
 model DayData {
   id              String   @id @default(uuid())
-  date            DateTime @unique // Date at midnight UTC
+  userId          String?  // Nullable during migration, will be required after data migration
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date            DateTime // Date at midnight UTC
 
   // Distance analytics (calculated from activity segments)
   distanceByType  Json     // {"walking": 5200, "biking": 12000, "driving": 45000} meters
@@ -94,12 +113,15 @@ model DayData {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  @@index([date])
+  @@unique([userId, date]) // One record per user per date
+  @@index([userId, date])  // Primary query pattern
 }
 
 // Enrichment tracker (prevents duplicate API calls)
 model Enrichment {
   id          String   @id @default(uuid())
+  userId      String?  // Null for system-level enrichments (e.g., shared place data)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   type        String   // "google_places", "weather", "spotify", "distance"
   status      String   // "pending", "complete", "failed", "rate_limited"
 
@@ -114,7 +136,8 @@ model Enrichment {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  @@index([type, status])
+  @@index([userId, type, status]) // User's enrichments by type
+  @@index([type, status])         // System-wide enrichment queries
   @@index([visitId])
   @@index([date])
 }

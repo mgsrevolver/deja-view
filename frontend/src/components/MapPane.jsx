@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -59,6 +59,19 @@ function FitBounds({ visits, path }) {
   return null
 }
 
+// Component to zoom to a selected visit
+function ZoomToVisit({ visit }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (visit) {
+      map.flyTo([visit.lat, visit.lon], 17, { duration: 0.8 })
+    }
+  }, [visit, map])
+
+  return null
+}
+
 // Color path segments by activity type
 function getPathColor(activityType) {
   const type = (activityType || '').toLowerCase()
@@ -68,7 +81,7 @@ function getPathColor(activityType) {
   return '#6b7280'
 }
 
-export default function MapPane({ visits, path, isLoading }) {
+export default function MapPane({ visits, path, isLoading, selectedVisit, onCloseOverlay }) {
   // Default center (will be overridden by FitBounds)
   const defaultCenter = visits.length > 0
     ? [visits[0].lat, visits[0].lon]
@@ -110,6 +123,7 @@ export default function MapPane({ visits, path, isLoading }) {
         />
 
         <FitBounds visits={visits} path={path} />
+        {selectedVisit && <ZoomToVisit visit={selectedVisit} />}
 
         {/* Draw path segments colored by activity */}
         {pathSegments.map((segment, idx) => (
@@ -141,13 +155,103 @@ export default function MapPane({ visits, path, isLoading }) {
           </Marker>
         ))}
       </MapContainer>
+
+      {/* Selected visit overlay */}
+      {selectedVisit && (
+        <div className="visit-overlay">
+          <button className="overlay-close" onClick={onCloseOverlay} aria-label="Close">
+            &times;
+          </button>
+
+          {selectedVisit.place?.imageUrl && (
+            <div className="overlay-image">
+              <img
+                src={selectedVisit.place.imageUrl}
+                alt={selectedVisit.place?.name || 'Place'}
+              />
+            </div>
+          )}
+
+          <div className="overlay-content">
+            <div className="overlay-header">
+              <div className="overlay-icon">{getSemanticIcon(selectedVisit.semanticType)}</div>
+              <div className="overlay-title">
+                <h3 className="overlay-name">
+                  {selectedVisit.place?.name || selectedVisit.semanticType || 'Unknown Place'}
+                </h3>
+                {selectedVisit.place?.address && (
+                  <p className="overlay-address">{selectedVisit.place.address}</p>
+                )}
+              </div>
+            </div>
+
+            {selectedVisit.durationMinutes && (
+              <p className="overlay-visit-duration">
+                This visit: {formatDuration(selectedVisit.durationMinutes)}
+              </p>
+            )}
+
+            {/* Place statistics */}
+            <div className="overlay-stats">
+              {selectedVisit.place?.firstVisitDate && (
+                <div className="overlay-stat">
+                  <div className="overlay-stat-label">First Visit</div>
+                  <div className="overlay-stat-value">{formatDate(selectedVisit.place.firstVisitDate)}</div>
+                </div>
+              )}
+              {selectedVisit.place?.lastVisitDate && (
+                <div className="overlay-stat">
+                  <div className="overlay-stat-label">Last Visit</div>
+                  <div className="overlay-stat-value">{formatDate(selectedVisit.place.lastVisitDate)}</div>
+                </div>
+              )}
+              {selectedVisit.place?.totalVisits && (
+                <div className="overlay-stat">
+                  <div className="overlay-stat-label">Total Visits</div>
+                  <div className="overlay-stat-value highlight">{selectedVisit.place.totalVisits.toLocaleString()}</div>
+                </div>
+              )}
+              {selectedVisit.place?.totalMinutes && (
+                <div className="overlay-stat">
+                  <div className="overlay-stat-label">Total Time</div>
+                  <div className="overlay-stat-value highlight">{formatDuration(selectedVisit.place.totalMinutes)}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+function getSemanticIcon(semanticType) {
+  const type = (semanticType || '').toLowerCase()
+  if (type.includes('home')) return '🏠'
+  if (type.includes('work')) return '💼'
+  if (type.includes('restaurant') || type.includes('food')) return '🍽️'
+  if (type.includes('gym') || type.includes('fitness')) return '🏋️'
+  if (type.includes('store') || type.includes('shop')) return '🛒'
+  if (type.includes('park')) return '🌳'
+  if (type.includes('airport')) return '✈️'
+  if (type.includes('hotel')) return '🏨'
+  return '📍'
 }
 
 function formatDuration(minutes) {
   if (minutes < 60) return `${minutes} min`
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24)
+    const remainingHours = hours % 24
+    if (remainingHours > 0) return `${days}d ${remainingHours}h`
+    return `${days}d`
+  }
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+}
+
+function formatDate(dateStr) {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
