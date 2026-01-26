@@ -2,7 +2,7 @@
 
 **Project Name**: Deja View _(You've been here before)_
 **Last Updated**: 2026-01-26
-**Current Phase**: Phase 2 Complete - Basic Journal UI Working
+**Current Phase**: Phase 3 In Progress - Place Enrichment Complete
 
 ---
 
@@ -27,47 +27,50 @@
 - Placeholder cards for future enrichments (weather, music, photos)
 - Distance traveled breakdown by activity type
 
+### Phase 3 - Place Enrichment (Partial)
+- Google Places API integration
+- Enrichment CLI script (`backend/scripts/enrich-places.js`)
+- **3,335 places enriched** with names, addresses, types, photo URLs
+- 171 failed (expired Place IDs from closed businesses - expected for 13 years of data)
+- Enrichment tracking in database to prevent duplicate API calls
+- Places cached globally for future users
+
 ---
 
 ## Current Stats
 
 - **Total Visits**: 18,096
 - **Unique Places**: 3,557
+- **Enriched Places**: 3,335 (94%)
 - **Date Range**: March 2013 - January 2026
 - **Import Speed**: ~15 seconds for full dataset
+- **Enrichment Cost**: $56.70 (one-time, cached for all users)
 
 ---
 
 ## Next Steps
 
-### Phase 3 - Place Enrichment (Recommended Next)
-1. **Resolve place names from Google Place IDs**
-   - Many visits have Place IDs (e.g., `ChIJbz386z3GxokRJzyF2woceKs`)
-   - Use Google Places API to fetch: name, address, photo, categories
-   - Update Place table with enriched data
-
-2. **Reverse geocoding fallback**
-   - For visits without Place IDs, reverse geocode coordinates
-   - Infer business/POI from address
-
-3. **Enrichment tracking**
-   - Use Enrichment table to prevent duplicate API calls
-   - Handle rate limits gracefully
+### Phase 3 - Remaining Tasks
+1. **OSM Nominatim fallback** - For failed Place IDs and free tier users
+2. **Display place photos** - Photo URLs are stored, need to show in VisitCard
+3. **Show addresses in UI** - Already stored, just need to display
 
 ### Phase 4 - Weather Enrichment
 - Open-Meteo API (free, historical data)
 - Store in DayData table
 - Display in weather card
 
-### Phase 5 - Additional Enrichments
-- Spotify listening history integration
-- Photo integration (Google Photos API or local)
-- News headlines for historical context
+### Phase 5 - Tier 2 Access (Non-technical users)
+- OAuth flow for Google Cloud connection, OR
+- Prepaid credits system, OR
+- Partner pricing with Google
+- Goal: Make premium enrichment accessible without technical setup
 
 ### Future Improvements
+- Spotify listening history integration
+- Photo integration (Google Photos API or local)
 - Background import with progress bar (for web UI)
 - User authentication (Supabase Auth)
-- Mobile-responsive refinements
 - Export/sharing features
 
 ---
@@ -97,6 +100,21 @@ node scripts/import-google-takeout.js ~/path/to/Records.json
 node scripts/import-google-takeout.js ~/path/to/Records.json --start=2020-01-01 --end=2020-12-31
 ```
 
+### Enrich Places
+
+```bash
+cd backend
+
+# Check status (dry run)
+node scripts/enrich-places.js --dry-run
+
+# Enrich all places (requires GOOGLE_PLACES_API_KEY in .env)
+node scripts/enrich-places.js
+
+# Enrich limited batch
+node scripts/enrich-places.js --limit=100
+```
+
 ---
 
 ## Tech Stack
@@ -106,18 +124,26 @@ node scripts/import-google-takeout.js ~/path/to/Records.json --start=2020-01-01 
 | Frontend | React 19, Vite, React Query, Leaflet, date-fns |
 | Backend | Node.js, Express, Prisma |
 | Database | PostgreSQL (Supabase) |
-| APIs | Google Places (planned), Open-Meteo (planned) |
+| APIs | Google Places (enrichment), Open-Meteo (planned) |
 
 ---
 
-## Cost Estimates
+## Enrichment Strategy
 
-| Service | Usage | Cost |
-|---------|-------|------|
-| Supabase | 500MB DB | $0/month (free tier) |
-| Vercel | Hosting | $0/month (free tier) |
-| Google Places API | ~3,500 places | ~$60 one-time ($200 free credit available) |
-| Open-Meteo | Weather history | $0 (free) |
+### Tier 1 - Free (Default)
+- OSM Nominatim for reverse geocoding (addresses)
+- Shared cache of Google-enriched places from other users
+- No API key required
+
+### Tier 2 - Premium (BYOK or Credits)
+- Full Google Places API enrichment
+- Photos, detailed categories, business info
+- User provides own API key OR purchases credits
+
+### Cost Model
+- Google Places API: ~$17 per 1,000 place lookups
+- Cached places: $0 (enriched once, served to all users)
+- OSM Nominatim: $0 (free, rate-limited)
 
 ---
 
@@ -138,7 +164,10 @@ backend/
   src/
     server.js           # Express API server
     services/
-      location-import.js # Google Takeout parser
+      location-import.js   # Google Takeout parser
+      place-enrichment.js  # Google Places + OSM integration
+  scripts/
+    enrich-places.js    # CLI for batch enrichment
   prisma/
     schema.prisma       # Database schema
 
@@ -157,3 +186,18 @@ scripts/
 | `GET /api/days/:date` | Full day data (visits, path, distance) |
 | `GET /api/interesting-day` | Day with most unique places |
 | `GET /health` | Health check |
+
+---
+
+## Environment Variables
+
+```bash
+# backend/.env
+DATABASE_URL=postgresql://...
+SUPABASE_URL=https://...
+SUPABASE_PUBLISHABLE_KEY=...
+SUPABASE_SECRET_KEY=...
+GOOGLE_PLACES_API_KEY=...  # For place enrichment
+PORT=3001
+NODE_ENV=development
+```
