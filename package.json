@@ -1,0 +1,12 @@
+{
+  "name": "deja-view",
+  "version": "0.1.0",
+  "description": "Déjà View - Transform your location history into an interactive journal",
+  "type": "module",
+  "scripts": {
+    "import": "node scripts/import-google-takeout.js"
+  },
+  "keywords": ["location", "journal", "google-takeout"],
+  "author": "Clay Reimus",
+  "license": "MIT"
+}

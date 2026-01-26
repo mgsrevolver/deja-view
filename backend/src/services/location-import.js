@@ -480,6 +480,7 @@ export async function importToDatabase(parsedData) {
   let locationsCreated = 0;
   let visitsCreated = 0;
   let placesCreated = 0;
+  const chunkSize = 1000;
 
   try {
     // Import GPS points (Location table)
@@ -496,8 +497,7 @@ export async function importToDatabase(parsedData) {
           activityType: p.activityType
         }));
 
-      // Batch insert locations (in chunks of 1000)
-      const chunkSize = 1000;
+      // Batch insert locations
       for (let i = 0; i < locationRecords.length; i += chunkSize) {
         const chunk = locationRecords.slice(i, i + chunkSize);
         await prisma.location.createMany({
@@ -517,52 +517,57 @@ export async function importToDatabase(parsedData) {
       console.log(`[INFO] Importing ${visits.length.toLocaleString()} visits...`);
 
       const uniquePlaceIDs = new Set();
+      const visitRecords = [];
 
+      // Transform visits for batch insert
       for (const visit of visits) {
-        if (!visit.startTime) continue; // Skip visits without start time
+        if (!visit.startTime) continue;
 
-        // Calculate duration in minutes
         let durationMinutes = null;
         if (visit.startTime && visit.endTime) {
           durationMinutes = Math.round((visit.endTime - visit.startTime) / 60000);
         }
 
-        // Create or get place ID
-        let placeID = visit.placeID || `coord_${visit.lat.toFixed(6)}_${visit.lon.toFixed(6)}`;
+        const placeID = visit.placeID || `coord_${visit.lat.toFixed(6)}_${visit.lon.toFixed(6)}`;
         uniquePlaceIDs.add(placeID);
 
-        // Insert visit
-        try {
-          await prisma.visit.create({
-            data: {
-              placeID,
-              lat: visit.lat,
-              lon: visit.lon,
-              startTime: visit.startTime,
-              endTime: visit.endTime,
-              durationMinutes,
-              semanticType: visit.semanticType,
-              probability: visit.probability
-            }
-          });
-          visitsCreated++;
-        } catch (error) {
-          // Skip duplicate visits
-          continue;
-        }
+        visitRecords.push({
+          placeID,
+          lat: visit.lat,
+          lon: visit.lon,
+          startTime: visit.startTime,
+          endTime: visit.endTime,
+          durationMinutes,
+          semanticType: visit.semanticType,
+          probability: visit.probability
+        });
       }
 
-      // Create unique Place records
+      // Create Places FIRST (visits have FK to places)
       console.log(`[INFO] Creating ${uniquePlaceIDs.size} unique places...`);
-      for (const placeID of uniquePlaceIDs) {
-        try {
-          await prisma.place.create({
-            data: { id: placeID }
-          });
-          placesCreated++;
-        } catch (error) {
-          // Place already exists, skip
-          continue;
+      const placeRecords = Array.from(uniquePlaceIDs).map(id => ({ id }));
+
+      for (let i = 0; i < placeRecords.length; i += chunkSize) {
+        const chunk = placeRecords.slice(i, i + chunkSize);
+        const result = await prisma.place.createMany({
+          data: chunk,
+          skipDuplicates: true
+        });
+        placesCreated += result.count;
+      }
+
+      // Batch insert visits (chunks of 1000)
+      console.log(`[INFO] Inserting ${visitRecords.length.toLocaleString()} visits...`);
+      for (let i = 0; i < visitRecords.length; i += chunkSize) {
+        const chunk = visitRecords.slice(i, i + chunkSize);
+        const result = await prisma.visit.createMany({
+          data: chunk,
+          skipDuplicates: true
+        });
+        visitsCreated += result.count;
+
+        if ((i + chunkSize) % 5000 === 0) {
+          console.log(`  [PROGRESS] ${Math.min(i + chunkSize, visitRecords.length).toLocaleString()} visits imported...`);
         }
       }
     }
