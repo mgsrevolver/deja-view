@@ -5,12 +5,14 @@ import { useAuth } from '../contexts/AuthContext'
 import MapPane from './MapPane'
 import Sidebar from './Sidebar'
 import CalendarPicker from './CalendarPicker'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function JournalView({ selectedDate, onDateChange, stats }) {
   const { user, signOut } = useAuth()
   const [showCalendar, setShowCalendar] = useState(false)
   const [selectedVisit, setSelectedVisit] = useState(null)
+
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   const handleSignOut = async () => {
     await signOut()
@@ -18,10 +20,11 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
 
   // Fetch day data when date is selected
   const { data: dayData, isLoading } = useQuery({
-    queryKey: ['day', selectedDate],
-    queryFn: () => fetchWithAuth(`/api/days/${selectedDate}`),
+    queryKey: ['day', selectedDate, tz],
+    queryFn: () => fetchWithAuth(`/api/days/${selectedDate}?tz=${encodeURIComponent(tz)}`),
     enabled: !!selectedDate
   })
+
 
   const handleDateChange = (newDate) => {
     setSelectedVisit(null)
@@ -86,7 +89,7 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
         </div>
       </header>
 
-      {/* Main content - split view */}
+      {/* Main content - split view (map small, sidebar large) */}
       <main className="journal-main">
         <div className="map-pane">
           <MapPane
@@ -95,7 +98,6 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
             isLoading={isLoading}
             selectedVisit={selectedVisit}
             onVisitClick={setSelectedVisit}
-            onCloseOverlay={() => setSelectedVisit(null)}
           />
         </div>
 

@@ -19,11 +19,12 @@ export default function CalendarPicker({ selectedDate, onSelect, onClose }) {
   )
 
   const monthKey = format(viewMonth, 'yyyy-MM')
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   // Fetch days with data for this month
   const { data: daysWithData } = useQuery({
-    queryKey: ['days', monthKey],
-    queryFn: () => fetchWithAuth(`/api/days?month=${monthKey}`)
+    queryKey: ['days', monthKey, tz],
+    queryFn: () => fetchWithAuth(`/api/days?month=${monthKey}&tz=${encodeURIComponent(tz)}`)
   })
 
   // Create a map of dates with visit counts

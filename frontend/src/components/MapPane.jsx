@@ -12,32 +12,58 @@ L.Icon.Default.mergeOptions({
 })
 
 // Custom marker icons by semantic type
-const createIcon = (color) => L.divIcon({
+const createIcon = (color, isSelected = false) => L.divIcon({
   className: 'custom-marker',
-  html: `<div style="
-    background: ${color};
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: 3px solid white;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-  "></div>`,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
+  html: isSelected
+    ? `<div style="
+        position: relative;
+        width: 36px;
+        height: 36px;
+      ">
+        <div style="
+          position: absolute;
+          inset: 0;
+          background: ${color};
+          border-radius: 50%;
+          opacity: 0.3;
+          animation: pulse 1.5s ease-in-out infinite;
+        "></div>
+        <div style="
+          position: absolute;
+          top: 6px;
+          left: 6px;
+          background: ${color};
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          border: 3px solid white;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        "></div>
+      </div>`
+    : `<div style="
+        background: ${color};
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 3px solid white;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      "></div>`,
+  iconSize: isSelected ? [36, 36] : [24, 24],
+  iconAnchor: isSelected ? [18, 18] : [12, 12],
   popupAnchor: [0, -12]
 })
 
-const icons = {
-  home: createIcon('#10b981'),      // green
-  work: createIcon('#3b82f6'),      // blue
-  default: createIcon('#8b5cf6'),   // purple
+const colors = {
+  home: '#10b981',      // green
+  work: '#3b82f6',      // blue
+  default: '#8b5cf6',   // purple
 }
 
-function getIcon(semanticType) {
+function getColor(semanticType) {
   const type = (semanticType || '').toLowerCase()
-  if (type.includes('home')) return icons.home
-  if (type.includes('work')) return icons.work
-  return icons.default
+  if (type.includes('home')) return colors.home
+  if (type.includes('work')) return colors.work
+  return colors.default
 }
 
 // Component to fit bounds when visits change
@@ -81,7 +107,7 @@ function getPathColor(activityType) {
   return '#6b7280'
 }
 
-export default function MapPane({ visits, path, isLoading, selectedVisit, onVisitClick, onCloseOverlay }) {
+export default function MapPane({ visits, path, isLoading, selectedVisit, onVisitClick }) {
   // Default center (will be overridden by FitBounds)
   const defaultCenter = visits.length > 0
     ? [visits[0].lat, visits[0].lon]
@@ -137,114 +163,22 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
         ))}
 
         {/* Visit markers */}
-        {visits.map((visit, idx) => (
-          <Marker
-            key={visit.id || idx}
-            position={[visit.lat, visit.lon]}
-            icon={getIcon(visit.semanticType)}
-            eventHandlers={{
-              click: () => onVisitClick(selectedVisit?.id === visit.id ? null : visit)
-            }}
-          />
-        ))}
+        {visits.map((visit, idx) => {
+          const isSelected = selectedVisit?.id === visit.id
+          const color = getColor(visit.semanticType)
+          return (
+            <Marker
+              key={visit.id || idx}
+              position={[visit.lat, visit.lon]}
+              icon={createIcon(color, isSelected)}
+              zIndexOffset={isSelected ? 1000 : 0}
+              eventHandlers={{
+                click: () => onVisitClick(isSelected ? null : visit)
+              }}
+            />
+          )
+        })}
       </MapContainer>
-
-      {/* Selected visit overlay */}
-      {selectedVisit && (
-        <div className="visit-overlay">
-          <button className="overlay-close" onClick={onCloseOverlay} aria-label="Close">
-            &times;
-          </button>
-
-          {selectedVisit.place?.imageUrl && (
-            <div className="overlay-image">
-              <img
-                src={selectedVisit.place.imageUrl}
-                alt={selectedVisit.place?.name || 'Place'}
-              />
-            </div>
-          )}
-
-          <div className="overlay-content">
-            <div className="overlay-header">
-              <div className="overlay-icon">{getSemanticIcon(selectedVisit.semanticType)}</div>
-              <div className="overlay-title">
-                <h3 className="overlay-name">
-                  {selectedVisit.place?.name || selectedVisit.semanticType || 'Unknown Place'}
-                </h3>
-                {selectedVisit.place?.address && (
-                  <p className="overlay-address">{selectedVisit.place.address}</p>
-                )}
-              </div>
-            </div>
-
-            {selectedVisit.durationMinutes && (
-              <p className="overlay-visit-duration">
-                This visit: {formatDuration(selectedVisit.durationMinutes)}
-              </p>
-            )}
-
-            {/* Place statistics */}
-            <div className="overlay-stats">
-              {selectedVisit.place?.firstVisitDate && (
-                <div className="overlay-stat">
-                  <div className="overlay-stat-label">First Visit</div>
-                  <div className="overlay-stat-value">{formatDate(selectedVisit.place.firstVisitDate)}</div>
-                </div>
-              )}
-              {selectedVisit.place?.lastVisitDate && (
-                <div className="overlay-stat">
-                  <div className="overlay-stat-label">Last Visit</div>
-                  <div className="overlay-stat-value">{formatDate(selectedVisit.place.lastVisitDate)}</div>
-                </div>
-              )}
-              {selectedVisit.place?.totalVisits && (
-                <div className="overlay-stat">
-                  <div className="overlay-stat-label">Total Visits</div>
-                  <div className="overlay-stat-value highlight">{selectedVisit.place.totalVisits.toLocaleString()}</div>
-                </div>
-              )}
-              {selectedVisit.place?.totalMinutes && (
-                <div className="overlay-stat">
-                  <div className="overlay-stat-label">Total Time</div>
-                  <div className="overlay-stat-value highlight">{formatDuration(selectedVisit.place.totalMinutes)}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
-}
-
-function getSemanticIcon(semanticType) {
-  const type = (semanticType || '').toLowerCase()
-  if (type.includes('home')) return '🏠'
-  if (type.includes('work')) return '💼'
-  if (type.includes('restaurant') || type.includes('food')) return '🍽️'
-  if (type.includes('gym') || type.includes('fitness')) return '🏋️'
-  if (type.includes('store') || type.includes('shop')) return '🛒'
-  if (type.includes('park')) return '🌳'
-  if (type.includes('airport')) return '✈️'
-  if (type.includes('hotel')) return '🏨'
-  return '📍'
-}
-
-function formatDuration(minutes) {
-  if (minutes < 60) return `${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  if (hours >= 24) {
-    const days = Math.floor(hours / 24)
-    const remainingHours = hours % 24
-    if (remainingHours > 0) return `${days}d ${remainingHours}h`
-    return `${days}d`
-  }
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
-}
-
-function formatDate(dateStr) {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }

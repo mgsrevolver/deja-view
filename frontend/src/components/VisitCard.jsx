@@ -8,7 +8,6 @@ export default function VisitCard({ visit, isSelected, onClick }) {
   const placeTypes = visit.place?.types || []
   const imageUrl = visit.place?.imageUrl
 
-  // Get icon based on semantic type
   const icon = getSemanticIcon(visit.semanticType)
 
   return (
@@ -19,43 +18,48 @@ export default function VisitCard({ visit, isSelected, onClick }) {
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onClick()}
     >
-      <div className="visit-time">
-        <span className="time-start">{startTime}</span>
-        {endTime && <span className="time-end">{endTime}</span>}
-      </div>
+      {/* Hero image at top */}
+      {imageUrl && (
+        <div className="visit-image">
+          <img src={imageUrl} alt={placeName} />
+        </div>
+      )}
 
-      <div className="visit-content">
-        <div className="visit-icon">{icon}</div>
-
-        <div className="visit-details">
-          <h4 className="visit-name">{placeName}</h4>
-
-          {visit.place?.address && (
-            <p className="visit-address">{visit.place.address}</p>
-          )}
-
-          {placeTypes.length > 0 && (
-            <div className="visit-types">
-              {placeTypes.slice(0, 2).map((type, i) => (
-                <span key={i} className="type-badge">
-                  {formatType(type)}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {visit.durationMinutes && (
-            <p className="visit-duration">
-              {formatDuration(visit.durationMinutes)}
-            </p>
-          )}
+      <div className="visit-card-body">
+        {/* Time */}
+        <div className="visit-time">
+          <span className="time-start">{startTime}</span>
+          {endTime && <span className="time-end">{endTime}</span>}
         </div>
 
-        {imageUrl && (
-          <div className="visit-image">
-            <img src={imageUrl} alt={placeName} />
+        {/* Content */}
+        <div className="visit-content">
+          <div className="visit-icon">{icon}</div>
+
+          <div className="visit-details">
+            <h4 className="visit-name">{placeName}</h4>
+
+            {visit.place?.address && (
+              <p className="visit-address">{visit.place.address}</p>
+            )}
+
+            {placeTypes.length > 0 && (
+              <div className="visit-types">
+                {placeTypes.slice(0, 2).map((type, i) => (
+                  <span key={i} className="type-badge">
+                    {formatType(type)}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {visit.durationMinutes && (
+              <span className="visit-duration">
+                {formatDuration(visit.durationMinutes)}
+              </span>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

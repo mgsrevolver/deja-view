@@ -10,17 +10,19 @@ function App() {
   const { user, loading: authLoading } = useAuth()
   const [selectedDate, setSelectedDate] = useState(null)
 
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+
   // Fetch stats to get date range (only when authenticated)
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['stats'],
-    queryFn: () => fetchWithAuth('/api/stats'),
+    queryKey: ['stats', tz],
+    queryFn: () => fetchWithAuth(`/api/stats?tz=${encodeURIComponent(tz)}`),
     enabled: !!user
   })
 
   // Fetch interesting day to start with (only when authenticated)
   const { data: interestingDay } = useQuery({
-    queryKey: ['interesting-day'],
-    queryFn: () => fetchWithAuth('/api/interesting-day'),
+    queryKey: ['interesting-day', tz],
+    queryFn: () => fetchWithAuth(`/api/interesting-day?tz=${encodeURIComponent(tz)}`),
     enabled: !!user && !selectedDate
   })
 
