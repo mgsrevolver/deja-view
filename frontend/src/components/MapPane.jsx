@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
@@ -81,7 +81,7 @@ function getPathColor(activityType) {
   return '#6b7280'
 }
 
-export default function MapPane({ visits, path, isLoading, selectedVisit, onCloseOverlay }) {
+export default function MapPane({ visits, path, isLoading, selectedVisit, onVisitClick, onCloseOverlay }) {
   // Default center (will be overridden by FitBounds)
   const defaultCenter = visits.length > 0
     ? [visits[0].lat, visits[0].lon]
@@ -142,17 +142,10 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onClos
             key={visit.id || idx}
             position={[visit.lat, visit.lon]}
             icon={getIcon(visit.semanticType)}
-          >
-            <Popup>
-              <div className="marker-popup">
-                <strong>{visit.place?.name || visit.semanticType || 'Unknown Place'}</strong>
-                {visit.place?.address && <p>{visit.place.address}</p>}
-                {visit.durationMinutes && (
-                  <p className="duration">{formatDuration(visit.durationMinutes)}</p>
-                )}
-              </div>
-            </Popup>
-          </Marker>
+            eventHandlers={{
+              click: () => onVisitClick(selectedVisit?.id === visit.id ? null : visit)
+            }}
+          />
         ))}
       </MapContainer>
 

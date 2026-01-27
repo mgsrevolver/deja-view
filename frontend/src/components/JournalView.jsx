@@ -94,6 +94,7 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
             path={dayData?.path || []}
             isLoading={isLoading}
             selectedVisit={selectedVisit}
+            onVisitClick={setSelectedVisit}
             onCloseOverlay={() => setSelectedVisit(null)}
           />
         </div>
