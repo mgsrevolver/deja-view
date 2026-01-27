@@ -2,7 +2,7 @@
 
 **Project Name**: Deja View _(You've been here before)_
 **Last Updated**: 2026-01-26
-**Current Phase**: Phase 4 Complete - Multi-Tenancy & Authentication
+**Current Phase**: Phase 4.5 - Timezone Fix & UI Refinements
 
 ---
 
@@ -67,6 +67,20 @@
 **Migration Scripts:**
 - `scripts/apply-rls.js` - Applies RLS policies
 - `scripts/migrate-user-data.js` - Assigns existing data to user account
+
+### Phase 4.5 - Timezone Fix & UI Refinements (In Progress)
+**Backend:**
+- Timezone-aware date queries (`tz` parameter on all date endpoints)
+- Visits now grouped by local date, not UTC
+- Helper functions: `toLocalDateString()`, `getDayBoundaries()`, `getMonthBoundaries()`
+- Weather enrichment service scaffolding (`backend/src/services/weather-enrichment.js`)
+- Weather enrichment CLI script (`backend/scripts/enrich-weather.js`)
+
+**Frontend:**
+- Map markers click-to-select (replaced popups with overlay)
+- Compact sidebar layout (68/32 split instead of 60/40)
+- Tighter spacing and smaller fonts in sidebar
+- WIP: Additional UI refinements
 
 ---
 

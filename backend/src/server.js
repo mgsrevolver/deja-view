@@ -149,13 +149,11 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
 app.get('/api/days', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { month } = req.query; // Format: YYYY-MM
+    const { month, tz } = req.query; // month: YYYY-MM, tz: IANA timezone
 
     let whereClause = { userId };
     if (month) {
-      const [year, m] = month.split('-').map(Number);
-      const startOfMonth = new Date(Date.UTC(year, m - 1, 1));
-      const endOfMonth = new Date(Date.UTC(year, m, 0, 23, 59, 59, 999));
+      const { startOfMonth, endOfMonth } = getMonthBoundaries(month, tz);
       whereClause.startTime = {
         gte: startOfMonth,
         lte: endOfMonth
@@ -171,10 +169,10 @@ app.get('/api/days', authMiddleware, async (req, res) => {
       }
     });
 
-    // Aggregate by date
+    // Aggregate by date (using local timezone)
     const dayMap = new Map();
     for (const visit of visits) {
-      const dateKey = visit.startTime.toISOString().split('T')[0];
+      const dateKey = toLocalDateString(visit.startTime, tz);
       if (!dayMap.has(dateKey)) {
         dayMap.set(dateKey, { date: dateKey, visitCount: 0, uniquePlaces: new Set() });
       }
@@ -201,8 +199,8 @@ app.get('/api/days/:date', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
     const { date } = req.params;
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+    const { tz } = req.query; // IANA timezone (e.g., 'America/Los_Angeles')
+    const { dayStart, dayEnd } = getDayBoundaries(date, tz);
 
     const [visits, locations, dayData, placeStats] = await Promise.all([
       // Get visits with place info
@@ -227,8 +225,9 @@ app.get('/api/days/:date', authMiddleware, async (req, res) => {
       }),
 
       // Get day-level enrichments if they exist
+      // Note: DayData stores dates at midnight UTC, not timezone-adjusted
       prisma.dayData.findFirst({
-        where: { userId, date: dayStart }
+        where: { userId, date: new Date(`${date}T00:00:00.000Z`) }
       }),
 
       // Get place stats for all places the user visited that day
@@ -322,6 +321,7 @@ app.get('/api/days/:date', authMiddleware, async (req, res) => {
 app.get('/api/interesting-day', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
+    const { tz } = req.query; // IANA timezone (e.g., 'America/Los_Angeles')
 
     const visits = await prisma.visit.findMany({
       where: { userId },
@@ -331,10 +331,10 @@ app.get('/api/interesting-day', authMiddleware, async (req, res) => {
       }
     });
 
-    // Group by date and count unique places
+    // Group by date and count unique places (using local timezone)
     const dayMap = new Map();
     for (const visit of visits) {
-      const dateKey = visit.startTime.toISOString().split('T')[0];
+      const dateKey = toLocalDateString(visit.startTime, tz);
       if (!dayMap.has(dateKey)) {
         dayMap.set(dateKey, new Set());
       }
@@ -363,6 +363,105 @@ app.get('/api/interesting-day', authMiddleware, async (req, res) => {
 // ============================================
 // HELPERS
 // ============================================
+
+/**
+ * Convert a UTC Date to a date string (YYYY-MM-DD) in the given timezone
+ * @param {Date} date - UTC date
+ * @param {string} tz - IANA timezone (e.g., 'America/Los_Angeles')
+ * @returns {string} Date string in local timezone
+ */
+function toLocalDateString(date, tz) {
+  if (!tz) return date.toISOString().split('T')[0];
+
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return formatter.format(date); // Returns YYYY-MM-DD
+  } catch (e) {
+    // Invalid timezone, fall back to UTC
+    return date.toISOString().split('T')[0];
+  }
+}
+
+/**
+ * Get midnight-to-midnight boundaries in a specific timezone as UTC Dates
+ * @param {string} dateStr - Date string (YYYY-MM-DD)
+ * @param {string} tz - IANA timezone (e.g., 'America/Los_Angeles')
+ * @returns {{ dayStart: Date, dayEnd: Date }}
+ */
+function getDayBoundaries(dateStr, tz) {
+  if (!tz) {
+    // Default to UTC
+    return {
+      dayStart: new Date(`${dateStr}T00:00:00.000Z`),
+      dayEnd: new Date(`${dateStr}T23:59:59.999Z`)
+    };
+  }
+
+  try {
+    // Parse the date parts
+    const [year, month, day] = dateStr.split('-').map(Number);
+
+    // Create a date at midnight in the target timezone
+    // We use a workaround: create a date string with the timezone and parse it
+    const midnightLocal = new Date(`${dateStr}T00:00:00`);
+
+    // Get the UTC offset for this date in the target timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset'
+    });
+    const parts = formatter.formatToParts(midnightLocal);
+    const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '+00:00';
+
+    // Parse offset (e.g., "GMT-8" -> -8, "GMT+5:30" -> 5.5)
+    const offsetMatch = offsetPart.match(/GMT([+-])?(\d+)?(?::(\d+))?/);
+    let offsetHours = 0;
+    if (offsetMatch) {
+      const sign = offsetMatch[1] === '-' ? -1 : 1;
+      const hours = parseInt(offsetMatch[2] || '0');
+      const minutes = parseInt(offsetMatch[3] || '0');
+      offsetHours = sign * (hours + minutes / 60);
+    }
+
+    // Calculate UTC times for local midnight and 23:59:59
+    const dayStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0) - offsetHours * 3600000);
+    const dayEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999) - offsetHours * 3600000);
+
+    return { dayStart, dayEnd };
+  } catch (e) {
+    // Fall back to UTC
+    return {
+      dayStart: new Date(`${dateStr}T00:00:00.000Z`),
+      dayEnd: new Date(`${dateStr}T23:59:59.999Z`)
+    };
+  }
+}
+
+/**
+ * Get month boundaries in a specific timezone
+ * @param {string} monthStr - Month string (YYYY-MM)
+ * @param {string} tz - IANA timezone
+ * @returns {{ startOfMonth: Date, endOfMonth: Date }}
+ */
+function getMonthBoundaries(monthStr, tz) {
+  const [year, month] = monthStr.split('-').map(Number);
+
+  // First day of month
+  const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
+  // Last day of month
+  const lastDay = new Date(year, month, 0).getDate();
+  const lastDayStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  const { dayStart: startOfMonth } = getDayBoundaries(firstDay, tz);
+  const { dayEnd: endOfMonth } = getDayBoundaries(lastDayStr, tz);
+
+  return { startOfMonth, endOfMonth };
+}
 
 // Haversine distance calculation (meters)
 function haversineDistance(lat1, lon1, lat2, lon2) {

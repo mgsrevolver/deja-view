@@ -117,6 +117,29 @@ model DayData {
   @@index([userId, date])  // Primary query pattern
 }
 
+// Global weather cache by zip code + date (shared across all users)
+model WeatherCache {
+  id            String   @id @default(uuid())
+  zipCode       String   // 5-digit US zip code
+  date          DateTime // Date at midnight UTC
+
+  // Weather data from Open-Meteo
+  tempMax       Int?     // Fahrenheit
+  tempMin       Int?     // Fahrenheit
+  condition     String?  // "Clear", "Rain", etc.
+  precipitation Float?   // Inches
+  weatherCode   Int?     // WMO code
+
+  // Location used for this weather fetch (for debugging)
+  lat           Float?
+  lon           Float?
+
+  createdAt     DateTime @default(now())
+
+  @@unique([zipCode, date])
+  @@index([zipCode, date])
+}
+
 // Enrichment tracker (prevents duplicate API calls)
 model Enrichment {
   id          String   @id @default(uuid())
