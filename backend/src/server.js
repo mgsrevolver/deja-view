@@ -1,12 +1,26 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import { PrismaClient } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
+import { parseGoogleTakeoutData, importToDatabase } from './services/location-import.js';
+import { enrichDayWeather, getEnrichmentStats, getWeatherMood } from './services/weather-enrichment.js';
+import { enrichPlace, getPlaceCoordinates } from './services/place-enrichment.js';
 
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
+
+// File upload configuration (in-memory, 150MB limit for large Takeout files)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 150 * 1024 * 1024 } // 150MB
+});
+
+// In-memory enrichment job tracking (per user)
+// Structure: { [userId]: { status, startedAt, completedAt, progress, error } }
+const enrichmentJobs = new Map();
 
 // Initialize Supabase client for auth verification
 const supabase = createClient(
@@ -266,20 +280,79 @@ app.get('/api/days/:date', authMiddleware, async (req, res) => {
       })
     ]);
 
-    // Calculate distance by activity type from locations
-    const distanceByType = {};
+    // Calculate distance by activity type from locations (in meters)
+    const distanceByTypeMeters = {};
     let prevLoc = null;
     for (const loc of locations) {
       if (prevLoc && loc.activityType) {
         const dist = haversineDistance(prevLoc.lat, prevLoc.lon, loc.lat, loc.lon);
         const type = loc.activityType.toLowerCase();
-        distanceByType[type] = (distanceByType[type] || 0) + dist;
+        distanceByTypeMeters[type] = (distanceByTypeMeters[type] || 0) + dist;
       }
       prevLoc = loc;
     }
 
+    // Convert to miles for display
+    const metersToMiles = (m) => Math.round((m / 1609.34) * 10) / 10;
+    const distanceByModeMiles = {};
+    for (const [mode, meters] of Object.entries(distanceByTypeMeters)) {
+      distanceByModeMiles[mode] = metersToMiles(meters);
+    }
+    const totalDistanceMeters = Object.values(distanceByTypeMeters).reduce((a, b) => a + b, 0);
+    const totalDistanceMiles = metersToMiles(totalDistanceMeters);
+
+    // Calculate summary stats
+    const uniquePlaces = new Set(visits.map(v => v.placeID));
+    const totalActiveMinutes = visits.reduce((sum, v) => sum + (v.durationMinutes || 0), 0);
+
+    // First and last visit times (formatted as HH:MM)
+    const formatTime = (date, tz) => {
+      if (!date) return null;
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: tz || 'UTC',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(date);
+      } catch {
+        return date.toISOString().slice(11, 16);
+      }
+    };
+    const firstVisitTime = visits.length > 0 ? formatTime(visits[0].startTime, tz) : null;
+    const lastVisitTime = visits.length > 0 ? formatTime(visits[visits.length - 1].startTime, tz) : null;
+
+    // Build weather summary with mood
+    let weatherSummary = null;
+    if (dayData?.weather) {
+      const w = dayData.weather;
+      // Ensure mood exists (backfill for older data)
+      const mood = w.mood || (w.weatherCode !== undefined ? getWeatherMood(w.weatherCode).mood : null);
+      const emoji = w.emoji || (w.weatherCode !== undefined ? getWeatherMood(w.weatherCode).emoji : null);
+      weatherSummary = {
+        high: w.tempMax,
+        low: w.tempMin,
+        condition: mood,
+        description: w.condition,
+        emoji
+      };
+    }
+
+    // Build summary object
+    const summary = {
+      placeCount: visits.length,
+      uniquePlaceCount: uniquePlaces.size,
+      totalDistanceMiles,
+      distanceByMode: distanceByModeMiles,
+      weather: weatherSummary,
+      firstVisit: firstVisitTime,
+      lastVisit: lastVisitTime,
+      totalActiveMinutes
+    };
+
     res.json({
       date,
+      summary,
       visits: visits.map(v => ({
         id: v.id,
         placeID: v.placeID,
@@ -307,8 +380,8 @@ app.get('/api/days/:date', authMiddleware, async (req, res) => {
         timestamp: l.timestamp,
         activityType: l.activityType
       })),
-      distanceByType,
-      totalDistance: Object.values(distanceByType).reduce((a, b) => a + b, 0),
+      distanceByType: distanceByTypeMeters,
+      totalDistance: totalDistanceMeters,
       weather: dayData?.weather || null,
       spotifyTracks: dayData?.spotifyTracks || null
     });
@@ -354,6 +427,199 @@ app.get('/api/interesting-day', authMiddleware, async (req, res) => {
     res.json({
       date: bestDay,
       uniquePlaces: maxPlaces
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Run background enrichment for a user
+ * Enriches weather for all days without weather data
+ * Enriches places with OSM Nominatim for basic reverse geocoding
+ */
+async function runBackgroundEnrichment(userId) {
+  const job = {
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    progress: { weather: { total: 0, completed: 0 }, places: { total: 0, completed: 0 } },
+    error: null
+  };
+  enrichmentJobs.set(userId, job);
+
+  try {
+    console.log(`[ENRICH] Starting background enrichment for user ${userId}`);
+
+    // Get weather enrichment stats
+    const weatherStats = await getEnrichmentStats(userId);
+    job.progress.weather.total = weatherStats.toEnrich;
+    console.log(`[ENRICH] Weather: ${weatherStats.toEnrich} days to enrich`);
+
+    // Enrich weather for each day
+    for (const date of weatherStats.dates) {
+      try {
+        await enrichDayWeather(userId, date);
+        job.progress.weather.completed++;
+
+        if (job.progress.weather.completed % 50 === 0) {
+          console.log(`[ENRICH] Weather progress: ${job.progress.weather.completed}/${job.progress.weather.total}`);
+        }
+      } catch (err) {
+        console.warn(`[ENRICH] Weather failed for ${date}: ${err.message}`);
+      }
+    }
+
+    // Get places needing OSM enrichment (no name, have coordinates from visits)
+    const unenrichedPlaces = await prisma.place.findMany({
+      where: { name: null },
+      take: 500 // Limit batch size
+    });
+
+    job.progress.places.total = unenrichedPlaces.length;
+    console.log(`[ENRICH] Places: ${unenrichedPlaces.length} places to enrich with OSM`);
+
+    // Enrich places with OSM Nominatim
+    for (const place of unenrichedPlaces) {
+      try {
+        const coords = await getPlaceCoordinates(place.id);
+        if (coords) {
+          await enrichPlace(place.id, coords.lat, coords.lon, false); // false = OSM only
+        }
+        job.progress.places.completed++;
+
+        if (job.progress.places.completed % 50 === 0) {
+          console.log(`[ENRICH] Places progress: ${job.progress.places.completed}/${job.progress.places.total}`);
+        }
+      } catch (err) {
+        console.warn(`[ENRICH] Place failed for ${place.id}: ${err.message}`);
+      }
+    }
+
+    job.status = 'complete';
+    job.completedAt = new Date().toISOString();
+    console.log(`[ENRICH] Complete for user ${userId}`);
+
+  } catch (error) {
+    console.error(`[ENRICH] Error for user ${userId}:`, error);
+    job.status = 'error';
+    job.error = error.message;
+    job.completedAt = new Date().toISOString();
+  }
+}
+
+// Import Google Takeout location history
+app.post('/api/import', authMiddleware, upload.single('file'), async (req, res) => {
+  const errors = [];
+
+  try {
+    const userId = req.user.id;
+    const enrich = req.query.enrich !== 'false'; // Default to true
+
+    // Validate file was uploaded
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded. Expected multipart/form-data with "file" field.'
+      });
+    }
+
+    console.log(`[IMPORT] Starting import for user ${userId}`);
+    console.log(`[IMPORT] File: ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
+
+    // Parse JSON from buffer
+    let jsonData;
+    try {
+      const fileContent = req.file.buffer.toString('utf8');
+      jsonData = JSON.parse(fileContent);
+    } catch (parseError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid JSON file. Could not parse file contents.',
+        details: parseError.message
+      });
+    }
+
+    // Parse the Google Takeout format
+    let parsedData;
+    try {
+      parsedData = parseGoogleTakeoutData(jsonData);
+      console.log(`[IMPORT] Detected format: ${parsedData.format}`);
+    } catch (formatError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Unrecognized file format. Expected Google Takeout location history JSON.',
+        details: formatError.message
+      });
+    }
+
+    // Check if there's any data to import
+    if (parsedData.points.length === 0 && parsedData.visits.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No location data found in file. The file may be empty or in an unsupported format.'
+      });
+    }
+
+    // Import to database
+    const result = await importToDatabase(parsedData, userId, prisma);
+
+    console.log(`[IMPORT] Complete: ${result.locations} locations, ${result.visits} visits`);
+
+    // Kick off background enrichment if enabled
+    if (enrich && result.visits > 0) {
+      console.log(`[IMPORT] Triggering background enrichment for user ${userId}`);
+      // Run async - don't await
+      runBackgroundEnrichment(userId).catch(err => {
+        console.error(`[ENRICH] Background enrichment failed:`, err);
+      });
+    }
+
+    res.json({
+      success: true,
+      imported: {
+        locations: result.locations,
+        visits: result.visits
+      },
+      skipped: result.skipped.locations + result.skipped.visits,
+      enrichmentStarted: enrich && result.visits > 0,
+      errors
+    });
+
+  } catch (error) {
+    console.error('[IMPORT] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Import failed due to server error.',
+      details: process.env.NODE_ENV === 'production' ? undefined : error.message
+    });
+  }
+});
+
+// Get enrichment status for current user
+app.get('/api/enrichment-status', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const job = enrichmentJobs.get(userId);
+
+    if (!job) {
+      // No active job - check if there's work to do
+      const stats = await getEnrichmentStats(userId);
+      return res.json({
+        status: 'idle',
+        pending: {
+          weatherDays: stats.toEnrich,
+          places: 0 // Would need to query, but keeping it simple
+        }
+      });
+    }
+
+    res.json({
+      status: job.status,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      progress: job.progress,
+      error: job.error
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

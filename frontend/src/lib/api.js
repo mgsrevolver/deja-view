@@ -29,4 +29,30 @@ export async function fetchWithAuth(endpoint, options = {}) {
   return response.json()
 }
 
+// Upload file with FormData (don't set Content-Type, browser does it for multipart)
+export async function uploadFile(endpoint, formData) {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  const headers = {}
+
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`
+  }
+
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: formData
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: response.statusText }))
+    throw new Error(error.error || `HTTP ${response.status}`)
+  }
+
+  return response.json()
+}
+
 export { API_BASE }

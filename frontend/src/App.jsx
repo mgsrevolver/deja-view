@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from './contexts/AuthContext'
 import { fetchWithAuth } from './lib/api'
 import JournalView from './components/JournalView'
 import LoginPage from './components/LoginPage'
+import ImportModal from './components/ImportModal'
 import './App.css'
 
 function App() {
   const { user, loading: authLoading } = useAuth()
   const [selectedDate, setSelectedDate] = useState(null)
+  const [showImport, setShowImport] = useState(false)
+  const queryClient = useQueryClient()
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -62,15 +65,31 @@ function App() {
     )
   }
 
-  // No data
+  const handleImportSuccess = () => {
+    // Refetch stats and interesting day after import
+    queryClient.invalidateQueries(['stats'])
+    queryClient.invalidateQueries(['interesting-day'])
+    setShowImport(false)
+  }
+
+  // No data - show empty state with import option
   if (!stats?.totalVisits) {
     return (
       <div className="empty-screen">
         <div className="empty-content">
           <h1>Deja View</h1>
           <p>No location data found.</p>
-          <p className="hint">Run the import script to load your Google Takeout data.</p>
+          <p className="hint">Import your Google Location History to get started.</p>
+          <button className="import-cta-btn" onClick={() => setShowImport(true)}>
+            Import Data
+          </button>
         </div>
+        {showImport && (
+          <ImportModal
+            onClose={() => setShowImport(false)}
+            onSuccess={handleImportSuccess}
+          />
+        )}
       </div>
     )
   }

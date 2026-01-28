@@ -43,6 +43,58 @@ const WEATHER_CODES = {
   99: 'Thunderstorm with Hail'
 };
 
+// WMO Weather Codes -> Mood categories (for styling/theming)
+const WEATHER_MOODS = {
+  0: 'clear',
+  1: 'clear',
+  2: 'partly-cloudy',
+  3: 'cloudy',
+  45: 'fog',
+  48: 'fog',
+  51: 'rain',
+  53: 'rain',
+  55: 'rain',
+  56: 'rain',
+  57: 'rain',
+  61: 'rain',
+  63: 'rain',
+  65: 'rain',
+  66: 'rain',
+  67: 'rain',
+  71: 'snow',
+  73: 'snow',
+  75: 'snow',
+  77: 'snow',
+  80: 'rain',
+  81: 'rain',
+  82: 'rain',
+  85: 'snow',
+  86: 'snow',
+  95: 'storm',
+  96: 'storm',
+  99: 'storm'
+};
+
+// Mood -> Emoji mapping
+const WEATHER_EMOJIS = {
+  'clear': '☀️',
+  'partly-cloudy': '⛅',
+  'cloudy': '☁️',
+  'rain': '🌧️',
+  'storm': '⛈️',
+  'snow': '❄️',
+  'fog': '🌫️'
+};
+
+/**
+ * Get normalized weather mood and emoji from WMO code
+ */
+export function getWeatherMood(weatherCode) {
+  const mood = WEATHER_MOODS[weatherCode] || 'cloudy';
+  const emoji = WEATHER_EMOJIS[mood] || '🌤️';
+  return { mood, emoji };
+}
+
 /**
  * Extract 5-digit ZIP code from a US address string
  * Returns null if no valid ZIP found
@@ -286,12 +338,15 @@ export async function enrichDayWeather(userId, date, options = {}) {
   );
 
   // Build weather data for DayData
+  const { mood, emoji } = getWeatherMood(weather.weatherCode);
   const weatherData = {
     tempMax: weather.tempMax,
     tempMin: weather.tempMin,
     condition: weather.condition,
     precipitation: weather.precipitation,
     weatherCode: weather.weatherCode,
+    mood,
+    emoji,
     zipCode,
     locationName: dominant.placeName,
     cachedFrom: cached ? 'cache' : 'api'
@@ -391,5 +446,8 @@ export default {
   getOrCreateWeatherCache,
   enrichDayWeather,
   getEnrichmentStats,
-  WEATHER_CODES
+  getWeatherMood,
+  WEATHER_CODES,
+  WEATHER_MOODS,
+  WEATHER_EMOJIS
 };

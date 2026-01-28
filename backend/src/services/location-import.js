@@ -419,45 +419,51 @@ function processRootArrayFormat(data) {
 }
 
 /**
- * Detect format and call appropriate parser
+ * Detect format and parse Google Takeout data
+ * @param {object|Array} data - Parsed JSON data from Google Takeout
+ * @returns {{points: Array, visits: Array, format: string}}
+ */
+export function parseGoogleTakeoutData(data) {
+  console.log('\n--- Starting JSON Data Processing ---');
+
+  let detectedFormat = null;
+  let result = { points: [], visits: [] };
+
+  if (Array.isArray(data)) {
+    detectedFormat = 'root_array';
+    result = processRootArrayFormat(data);
+  } else if (data.locations) {
+    detectedFormat = 'locations';
+    result = { points: processLocationsFormat(data), visits: [] };
+  } else if (data.semanticSegments) {
+    detectedFormat = 'semanticSegments';
+    result = processSemanticSegmentsFormat(data);
+  } else if (data.timelineObjects) {
+    detectedFormat = 'timelineObjects';
+    result = processTimelineObjectsFormat(data);
+  } else {
+    throw new Error('Could not determine JSON format. No known structure identified.');
+  }
+
+  console.log(`\n[INFO] Format detected: ${detectedFormat}`);
+  console.log(`[INFO] Total GPS points: ${result.points.length.toLocaleString()}`);
+  console.log(`[INFO] Total visits: ${result.visits.length.toLocaleString()}`);
+
+  return { ...result, format: detectedFormat };
+}
+
+/**
+ * Detect format and call appropriate parser (from file)
  * @param {string} filePath - Path to Google Takeout JSON file
- * @returns {Promise<{points: Array, visits: Array}>}
+ * @returns {Promise<{points: Array, visits: Array, format: string}>}
  */
 export async function parseGoogleTakeoutFile(filePath) {
-  console.log('\n--- Starting JSON File Processing ---');
   console.log(`[INFO] Reading file: ${filePath}`);
 
   try {
-    // Read file as text
     const fileContent = fs.readFileSync(filePath, 'utf8');
     const data = JSON.parse(fileContent);
-
-    // Detect format
-    let detectedFormat = null;
-    let result = { points: [], visits: [] };
-
-    if (Array.isArray(data)) {
-      detectedFormat = 'root_array';
-      result = processRootArrayFormat(data);
-    } else if (data.locations) {
-      detectedFormat = 'locations';
-      result = { points: processLocationsFormat(data), visits: [] };
-    } else if (data.semanticSegments) {
-      detectedFormat = 'semanticSegments';
-      result = processSemanticSegmentsFormat(data);
-    } else if (data.timelineObjects) {
-      detectedFormat = 'timelineObjects';
-      result = processTimelineObjectsFormat(data);
-    } else {
-      throw new Error('Could not determine JSON format. No known structure identified.');
-    }
-
-    console.log(`\n[INFO] Format detected: ${detectedFormat}`);
-    console.log(`[INFO] Total GPS points: ${result.points.length.toLocaleString()}`);
-    console.log(`[INFO] Total visits: ${result.visits.length.toLocaleString()}`);
-
-    return result;
-
+    return parseGoogleTakeoutData(data);
   } catch (error) {
     if (error.code === 'ENOENT') {
       throw new Error(`File not found: ${filePath}`);
@@ -469,17 +475,22 @@ export async function parseGoogleTakeoutFile(filePath) {
 }
 
 /**
- * Import parsed data into database
+ * Import parsed data into database for a specific user
  * @param {{points: Array, visits: Array}} parsedData
- * @returns {Promise<{locationsCreated: number, visitsCreated: number, placesCreated: number}>}
+ * @param {string} userId - User ID to associate records with
+ * @param {PrismaClient} [prismaClient] - Optional Prisma client (uses default if not provided)
+ * @returns {Promise<{locations: number, visits: number, places: number, skipped: {locations: number, visits: number}}>}
  */
-export async function importToDatabase(parsedData) {
+export async function importToDatabase(parsedData, userId, prismaClient = prisma) {
   console.log('\n--- Importing to Database ---');
+  console.log(`[INFO] User ID: ${userId}`);
 
   const { points, visits } = parsedData;
   let locationsCreated = 0;
   let visitsCreated = 0;
   let placesCreated = 0;
+  let locationsSkipped = 0;
+  let visitsSkipped = 0;
   const chunkSize = 1000;
 
   try {
@@ -490,6 +501,7 @@ export async function importToDatabase(parsedData) {
       const locationRecords = points
         .filter(p => p.timestamp) // Only import points with valid timestamps
         .map(p => ({
+          userId,
           lat: p.lat,
           lon: p.lon,
           timestamp: p.timestamp,
@@ -497,19 +509,23 @@ export async function importToDatabase(parsedData) {
           activityType: p.activityType
         }));
 
-      // Batch insert locations
+      const totalLocationRecords = locationRecords.length;
+
+      // Batch insert locations with duplicate detection
       for (let i = 0; i < locationRecords.length; i += chunkSize) {
         const chunk = locationRecords.slice(i, i + chunkSize);
-        await prisma.location.createMany({
+        const result = await prismaClient.location.createMany({
           data: chunk,
           skipDuplicates: true
         });
-        locationsCreated += chunk.length;
+        locationsCreated += result.count;
 
         if ((i + chunkSize) % 10000 === 0) {
-          console.log(`  [PROGRESS] ${Math.min(i + chunkSize, locationRecords.length).toLocaleString()} locations imported...`);
+          console.log(`  [PROGRESS] ${Math.min(i + chunkSize, locationRecords.length).toLocaleString()} locations processed...`);
         }
       }
+
+      locationsSkipped = totalLocationRecords - locationsCreated;
     }
 
     // Import visits (Visit table) and create unique places
@@ -532,6 +548,7 @@ export async function importToDatabase(parsedData) {
         uniquePlaceIDs.add(placeID);
 
         visitRecords.push({
+          userId,
           placeID,
           lat: visit.lat,
           lon: visit.lon,
@@ -549,7 +566,7 @@ export async function importToDatabase(parsedData) {
 
       for (let i = 0; i < placeRecords.length; i += chunkSize) {
         const chunk = placeRecords.slice(i, i + chunkSize);
-        const result = await prisma.place.createMany({
+        const result = await prismaClient.place.createMany({
           data: chunk,
           skipDuplicates: true
         });
@@ -557,27 +574,38 @@ export async function importToDatabase(parsedData) {
       }
 
       // Batch insert visits (chunks of 1000)
-      console.log(`[INFO] Inserting ${visitRecords.length.toLocaleString()} visits...`);
+      const totalVisitRecords = visitRecords.length;
+      console.log(`[INFO] Inserting ${totalVisitRecords.toLocaleString()} visits...`);
       for (let i = 0; i < visitRecords.length; i += chunkSize) {
         const chunk = visitRecords.slice(i, i + chunkSize);
-        const result = await prisma.visit.createMany({
+        const result = await prismaClient.visit.createMany({
           data: chunk,
           skipDuplicates: true
         });
         visitsCreated += result.count;
 
         if ((i + chunkSize) % 5000 === 0) {
-          console.log(`  [PROGRESS] ${Math.min(i + chunkSize, visitRecords.length).toLocaleString()} visits imported...`);
+          console.log(`  [PROGRESS] ${Math.min(i + chunkSize, visitRecords.length).toLocaleString()} visits processed...`);
         }
       }
+
+      visitsSkipped = totalVisitRecords - visitsCreated;
     }
 
     console.log('\n[SUCCESS] Import completed');
-    console.log(`  - Locations: ${locationsCreated.toLocaleString()}`);
-    console.log(`  - Visits: ${visitsCreated.toLocaleString()}`);
+    console.log(`  - Locations: ${locationsCreated.toLocaleString()} (${locationsSkipped.toLocaleString()} skipped)`);
+    console.log(`  - Visits: ${visitsCreated.toLocaleString()} (${visitsSkipped.toLocaleString()} skipped)`);
     console.log(`  - Unique Places: ${placesCreated.toLocaleString()}`);
 
-    return { locationsCreated, visitsCreated, placesCreated };
+    return {
+      locations: locationsCreated,
+      visits: visitsCreated,
+      places: placesCreated,
+      skipped: {
+        locations: locationsSkipped,
+        visits: visitsSkipped
+      }
+    };
 
   } catch (error) {
     console.error('[ERROR] Database import failed:', error);
@@ -587,5 +615,6 @@ export async function importToDatabase(parsedData) {
 
 export default {
   parseGoogleTakeoutFile,
+  parseGoogleTakeoutData,
   importToDatabase
 };

@@ -5,7 +5,27 @@ export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClic
   if (isLoading) {
     return (
       <div className="sidebar">
-        <div className="sidebar-loading">Loading...</div>
+        <div className="skeleton-container">
+          {/* Skeleton place panel */}
+          <div className="skeleton-place">
+            <div className="skeleton skeleton-icon"></div>
+            <div className="skeleton skeleton-title"></div>
+            <div className="skeleton skeleton-subtitle"></div>
+          </div>
+          {/* Skeleton timeline */}
+          <div className="skeleton-timeline">
+            <div className="skeleton skeleton-header"></div>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="skeleton-item">
+                <div className="skeleton skeleton-thumb"></div>
+                <div className="skeleton-item-text">
+                  <div className="skeleton skeleton-time"></div>
+                  <div className="skeleton skeleton-name"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
@@ -18,7 +38,30 @@ export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClic
     )
   }
 
-  const { visits, weather } = dayData
+  const { visits, weather, distanceByType } = dayData
+
+  // Format distance for display
+  const formatDistance = (meters) => {
+    const miles = meters / 1609.34
+    if (miles < 0.1) {
+      const feet = Math.round(meters * 3.28084)
+      return `${feet} ft`
+    }
+    return `${miles.toFixed(1)} mi`
+  }
+
+  // Get activity distances
+  const distances = []
+  if (distanceByType) {
+    const entries = Object.entries(distanceByType)
+    for (const [type, meters] of entries) {
+      if (meters > 50) { // Only show if > 50 meters
+        distances.push({ type, meters, display: formatDistance(meters) })
+      }
+    }
+    // Sort by distance descending
+    distances.sort((a, b) => b.meters - a.meters)
+  }
 
   return (
     <div className="sidebar">
@@ -30,6 +73,18 @@ export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClic
             {weather.tempMax != null && `${Math.round(weather.tempMax)}°`}
             {weather.tempMin != null && ` / ${Math.round(weather.tempMin)}°`}
           </span>
+        </div>
+      )}
+
+      {/* Distance breakdown */}
+      {distances.length > 0 && (
+        <div className="distance-bar">
+          {distances.map(({ type, display }) => (
+            <span key={type} className={`distance-item distance-${getActivityClass(type)}`}>
+              <span className="distance-dot"></span>
+              {display} {getActivityLabel(type)}
+            </span>
+          ))}
         </div>
       )}
 
@@ -117,7 +172,7 @@ function PlaceDetail({ visit, onClose }) {
               {visit.place?.totalMinutes && (
                 <div className="history-stat">
                   <span className="stat-value">{formatTotalTime(visit.place.totalMinutes)}</span>
-                  <span className="stat-label">total</span>
+                  <span className="stat-label">time spent</span>
                 </div>
               )}
             </div>
@@ -207,6 +262,26 @@ function getWeatherIcon(condition) {
   return ''
 }
 
+function getActivityClass(type) {
+  const t = (type || '').toLowerCase()
+  if (t.includes('walk')) return 'walk'
+  if (t.includes('bik') || t.includes('cycl')) return 'bike'
+  if (t.includes('vehicle') || t.includes('driv') || t.includes('car')) return 'drive'
+  if (t.includes('run')) return 'walk'
+  if (t.includes('transit') || t.includes('bus') || t.includes('train')) return 'transit'
+  return 'other'
+}
+
+function getActivityLabel(type) {
+  const t = (type || '').toLowerCase()
+  if (t.includes('walk')) return 'walked'
+  if (t.includes('bik') || t.includes('cycl')) return 'biked'
+  if (t.includes('vehicle') || t.includes('driv') || t.includes('car')) return 'driven'
+  if (t.includes('run')) return 'ran'
+  if (t.includes('transit') || t.includes('bus') || t.includes('train')) return 'transit'
+  return ''
+}
+
 function getIcon(semanticType) {
   const type = (semanticType || '').toLowerCase()
   if (type.includes('home')) return '🏠'
@@ -234,17 +309,12 @@ function formatTotalTime(minutes) {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
   }
   const days = Math.floor(hours / 24)
-  if (days < 30) {
-    const remainingHours = hours % 24
+  const remainingHours = hours % 24
+  if (days < 7) {
     return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days} days`
   }
-  const months = Math.floor(days / 30)
-  if (months < 12) {
-    return `${months} months`
-  }
-  const years = Math.floor(months / 12)
-  const remainingMonths = months % 12
-  return remainingMonths > 0 ? `${years}y ${remainingMonths}mo` : `${years} years`
+  // 7+ days: just show days
+  return `${days} days`
 }
 
 function formatType(type) {

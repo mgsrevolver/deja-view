@@ -107,11 +107,24 @@ function getPathColor(activityType) {
   return '#6b7280'
 }
 
-export default function MapPane({ visits, path, isLoading, selectedVisit, onVisitClick }) {
+// Weather mood colors (very subtle - 5% opacity max)
+function getWeatherMood(condition) {
+  const c = (condition || '').toLowerCase()
+  if (c.includes('clear') || c.includes('sunny')) return 'rgba(251, 191, 36, 0.05)' // warm golden
+  if (c.includes('rain') || c.includes('drizzle')) return 'rgba(96, 165, 250, 0.04)' // cool blue
+  if (c.includes('snow')) return 'rgba(226, 232, 240, 0.05)' // cool bright
+  if (c.includes('fog') || c.includes('mist')) return 'rgba(148, 163, 184, 0.04)' // muted gray
+  if (c.includes('cloud') || c.includes('overcast')) return 'rgba(148, 163, 184, 0.03)' // subtle gray
+  return null
+}
+
+export default function MapPane({ visits, path, isLoading, selectedVisit, onVisitClick, weatherCondition }) {
   // Default center (will be overridden by FitBounds)
   const defaultCenter = visits.length > 0
     ? [visits[0].lat, visits[0].lon]
     : [39.95, -75.16] // Philadelphia default
+
+  const weatherMood = getWeatherMood(weatherCondition)
 
   // Group path into segments by activity type
   const pathSegments = []
@@ -138,14 +151,22 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
         </div>
       )}
 
+      {/* Weather mood overlay - subliminal tinting */}
+      {weatherMood && (
+        <div
+          className="weather-mood-overlay"
+          style={{ background: weatherMood }}
+        />
+      )}
+
       <MapContainer
         center={defaultCenter}
         zoom={13}
         style={{ height: '100%', width: '100%' }}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
 
         <FitBounds visits={visits} path={path} />
@@ -179,6 +200,24 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
           )
         })}
       </MapContainer>
+
+      {/* Map legend */}
+      {pathSegments.length > 0 && (
+        <div className="map-legend">
+          <div className="legend-item">
+            <span className="legend-line legend-walk"></span>
+            <span>Walking</span>
+          </div>
+          <div className="legend-item">
+            <span className="legend-line legend-bike"></span>
+            <span>Biking</span>
+          </div>
+          <div className="legend-item">
+            <span className="legend-line legend-drive"></span>
+            <span>Driving</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

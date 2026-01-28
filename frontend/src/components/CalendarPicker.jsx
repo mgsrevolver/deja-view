@@ -9,6 +9,8 @@ import {
   isSameDay,
   addMonths,
   subMonths,
+  addYears,
+  subYears,
   getDay
 } from 'date-fns'
 import { fetchWithAuth } from '../lib/api'
@@ -42,6 +44,8 @@ export default function CalendarPicker({ selectedDate, onSelect, onClose }) {
   // Padding for start of month
   const startPadding = getDay(monthStart)
 
+  const handlePrevYear = () => setViewMonth(subYears(viewMonth, 1))
+  const handleNextYear = () => setViewMonth(addYears(viewMonth, 1))
   const handlePrevMonth = () => setViewMonth(subMonths(viewMonth, 1))
   const handleNextMonth = () => setViewMonth(addMonths(viewMonth, 1))
 
@@ -49,9 +53,15 @@ export default function CalendarPicker({ selectedDate, onSelect, onClose }) {
     <div className="calendar-overlay" onClick={onClose}>
       <div className="calendar-modal" onClick={e => e.stopPropagation()}>
         <div className="calendar-header">
-          <button onClick={handlePrevMonth}>&larr;</button>
+          <div className="calendar-nav">
+            <button onClick={handlePrevYear} title="Previous year">&laquo;</button>
+            <button onClick={handlePrevMonth} title="Previous month">&lsaquo;</button>
+          </div>
           <h3>{format(viewMonth, 'MMMM yyyy')}</h3>
-          <button onClick={handleNextMonth}>&rarr;</button>
+          <div className="calendar-nav">
+            <button onClick={handleNextMonth} title="Next month">&rsaquo;</button>
+            <button onClick={handleNextYear} title="Next year">&raquo;</button>
+          </div>
         </div>
 
         <div className="calendar-grid">
