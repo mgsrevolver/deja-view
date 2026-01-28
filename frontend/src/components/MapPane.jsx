@@ -11,8 +11,8 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 })
 
-// Custom marker icons by semantic type
-const createIcon = (color, isSelected = false) => L.divIcon({
+// Custom marker icons with visit number
+const createIcon = (color, isSelected = false, number = null) => L.divIcon({
   className: 'custom-marker',
   html: isSelected
     ? `<div style="
@@ -38,7 +38,14 @@ const createIcon = (color, isSelected = false) => L.divIcon({
           border-radius: 50%;
           border: 3px solid white;
           box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-        "></div>
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 11px;
+          font-weight: 600;
+          font-family: system-ui, sans-serif;
+        ">${number || ''}</div>
       </div>`
     : `<div style="
         background: ${color};
@@ -47,7 +54,14 @@ const createIcon = (color, isSelected = false) => L.divIcon({
         border-radius: 50%;
         border: 3px solid white;
         box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-      "></div>`,
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: system-ui, sans-serif;
+      ">${number || ''}</div>`,
   iconSize: isSelected ? [36, 36] : [24, 24],
   iconAnchor: isSelected ? [18, 18] : [12, 12],
   popupAnchor: [0, -12]
@@ -104,6 +118,7 @@ function getPathColor(activityType) {
   if (type.includes('walk')) return '#10b981'
   if (type.includes('bik') || type.includes('cycl')) return '#f59e0b'
   if (type.includes('vehicle') || type.includes('driv')) return '#ef4444'
+  if (type.includes('transit') || type.includes('train') || type.includes('bus') || type.includes('subway')) return '#3b82f6'
   return '#6b7280'
 }
 
@@ -187,11 +202,12 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
         {visits.map((visit, idx) => {
           const isSelected = selectedVisit?.id === visit.id
           const color = getColor(visit.semanticType)
+          const visitNumber = idx + 1
           return (
             <Marker
               key={visit.id || idx}
               position={[visit.lat, visit.lon]}
-              icon={createIcon(color, isSelected)}
+              icon={createIcon(color, isSelected, visitNumber)}
               zIndexOffset={isSelected ? 1000 : 0}
               eventHandlers={{
                 click: () => onVisitClick(isSelected ? null : visit)
@@ -200,24 +216,6 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
           )
         })}
       </MapContainer>
-
-      {/* Map legend */}
-      {pathSegments.length > 0 && (
-        <div className="map-legend">
-          <div className="legend-item">
-            <span className="legend-line legend-walk"></span>
-            <span>Walking</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-line legend-bike"></span>
-            <span>Biking</span>
-          </div>
-          <div className="legend-item">
-            <span className="legend-line legend-drive"></span>
-            <span>Driving</span>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

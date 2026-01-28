@@ -1,7 +1,7 @@
 import { format, parseISO } from 'date-fns'
 import { useEffect, useRef } from 'react'
 
-export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClick }) {
+export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClick, onDateChange }) {
   if (isLoading) {
     return (
       <div className="sidebar">
@@ -38,71 +38,113 @@ export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClic
     )
   }
 
-  const { visits, weather, distanceByType } = dayData
+  const { visits, summary, path = [] } = dayData
 
-  // Format distance for display
-  const formatDistance = (meters) => {
-    const miles = meters / 1609.34
-    if (miles < 0.1) {
-      const feet = Math.round(meters * 3.28084)
-      return `${feet} ft`
-    }
-    return `${miles.toFixed(1)} mi`
+  // Calculate distances from path data (same source as the map)
+  const calculatedDistances = calculateDistancesByMode(path)
+
+  // Format active time
+  const formatActiveTime = (minutes) => {
+    if (!minutes) return null
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    if (hours === 0) return `${mins}m`
+    if (mins === 0) return `${hours}h`
+    return `${hours}h ${mins}m`
   }
 
-  // Get activity distances
-  const distances = []
-  if (distanceByType) {
-    const entries = Object.entries(distanceByType)
-    for (const [type, meters] of entries) {
-      if (meters > 50) { // Only show if > 50 meters
-        distances.push({ type, meters, display: formatDistance(meters) })
-      }
-    }
-    // Sort by distance descending
-    distances.sort((a, b) => b.meters - a.meters)
-  }
+  const hasPlaceSelected = !!selectedVisit
+
+  // Check if there's any travel data to show
+  const hasDistanceData =
+    calculatedDistances.walking > 0 ||
+    calculatedDistances.cycling > 0 ||
+    calculatedDistances.driving > 0 ||
+    calculatedDistances.transit > 0 ||
+    calculatedDistances.other > 0
 
   return (
-    <div className="sidebar">
-      {/* Day context - weather */}
-      {weather && (
-        <div className="day-bar">
-          <span className="day-weather">
-            {weather.condition && `${getWeatherIcon(weather.condition)} `}
-            {weather.tempMax != null && `${Math.round(weather.tempMax)}°`}
-            {weather.tempMin != null && ` / ${Math.round(weather.tempMin)}°`}
-          </span>
+    <div className={`sidebar ${hasPlaceSelected ? 'place-selected' : ''}`}>
+      {/* Persistent Travel Stats - always visible */}
+      {hasDistanceData && (
+        <div className="travel-stats-bar">
+          {calculatedDistances.walking > 0 && (
+            <div className="travel-mode walk">
+              <span className="mode-dot"></span>
+              <span className="mode-value">{calculatedDistances.walking.toFixed(1)} mi</span>
+              <span className="mode-label">walked</span>
+            </div>
+          )}
+          {calculatedDistances.cycling > 0 && (
+            <div className="travel-mode bike">
+              <span className="mode-dot"></span>
+              <span className="mode-value">{calculatedDistances.cycling.toFixed(1)} mi</span>
+              <span className="mode-label">biked</span>
+            </div>
+          )}
+          {calculatedDistances.driving > 0 && (
+            <div className="travel-mode drive">
+              <span className="mode-dot"></span>
+              <span className="mode-value">{calculatedDistances.driving.toFixed(1)} mi</span>
+              <span className="mode-label">driven</span>
+            </div>
+          )}
+          {calculatedDistances.transit > 0 && (
+            <div className="travel-mode transit">
+              <span className="mode-dot"></span>
+              <span className="mode-value">{calculatedDistances.transit.toFixed(1)} mi</span>
+              <span className="mode-label">transit</span>
+            </div>
+          )}
+          {calculatedDistances.other > 0 && (
+            <div className="travel-mode other">
+              <span className="mode-dot"></span>
+              <span className="mode-value">{calculatedDistances.other.toFixed(1)} mi</span>
+              <span className="mode-label">other</span>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Distance breakdown */}
-      {distances.length > 0 && (
-        <div className="distance-bar">
-          {distances.map(({ type, display }) => (
-            <span key={type} className={`distance-item distance-${getActivityClass(type)}`}>
-              <span className="distance-dot"></span>
-              {display} {getActivityLabel(type)}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Selected Place - fills available space */}
-      <div className="place-panel">
-        {selectedVisit ? (
-          <PlaceDetail visit={selectedVisit} onClose={() => onVisitClick(null)} />
-        ) : (
-          <div className="place-empty">
-            <span className="place-empty-icon">📍</span>
-            <p>Select a place</p>
-            <span className="place-empty-hint">Tap a marker or timeline item</span>
+      {/* Day Summary - shows when no place selected */}
+      {!hasPlaceSelected && summary && (
+        <div className="day-summary-card">
+          {/* Weather row */}
+          {summary.weather && (
+            <div className="summary-weather">
+              <span className="weather-icon">{summary.weather.emoji || getWeatherIcon(summary.weather.condition)}</span>
+              <span className="weather-condition">{summary.weather.condition}</span>
+              {summary.weather.high != null && (
+                <span className="weather-temps">
+                  {Math.round(summary.weather.high)}° / {Math.round(summary.weather.low)}°
+                </span>
+              )}
+            </div>
+          )}
+          {/* Stats row */}
+          <div className="summary-stats">
+            {summary.placeCount > 0 && (
+              <span className="summary-stat">{summary.placeCount} places</span>
+            )}
+            {summary.totalDistanceMiles > 0.1 && (
+              <span className="summary-stat">{summary.totalDistanceMiles.toFixed(1)} mi</span>
+            )}
+            {summary.totalActiveMinutes > 0 && (
+              <span className="summary-stat">{formatActiveTime(summary.totalActiveMinutes)}</span>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Timeline - fixed at bottom */}
-      <div className="timeline-panel">
+      {/* Place Detail - shows when place selected */}
+      {hasPlaceSelected && (
+        <div className="place-panel">
+          <PlaceDetail visit={selectedVisit} onClose={() => onVisitClick(null)} onDateChange={onDateChange} />
+        </div>
+      )}
+
+      {/* Timeline - expands when no place selected, shrinks when place selected */}
+      <div className={`timeline-panel ${hasPlaceSelected ? 'compact' : 'expanded'}`}>
         <div className="timeline-header">Timeline · {visits.length} places</div>
         <Timeline
           visits={visits}
@@ -114,7 +156,7 @@ export default function Sidebar({ dayData, isLoading, selectedVisit, onVisitClic
   )
 }
 
-function PlaceDetail({ visit, onClose }) {
+function PlaceDetail({ visit, onClose, onDateChange }) {
   const placeName = visit.place?.name || visit.semanticType || 'Unknown Place'
   const imageUrl = visit.place?.imageUrl
   const hasHistory = visit.place?.totalVisits > 1 || visit.place?.totalMinutes
@@ -178,9 +220,19 @@ function PlaceDetail({ visit, onClose }) {
             </div>
             {visit.place?.firstVisitDate && (
               <div className="history-dates">
-                <span>First {formatDate(visit.place.firstVisitDate)}</span>
+                <button
+                  className="date-link"
+                  onClick={() => onDateChange(visit.place.firstVisitDate.split('T')[0])}
+                >
+                  First {formatDate(visit.place.firstVisitDate)}
+                </button>
                 {visit.place?.lastVisitDate && visit.place?.totalVisits > 1 && (
-                  <span>Last {formatDate(visit.place.lastVisitDate)}</span>
+                  <button
+                    className="date-link"
+                    onClick={() => onDateChange(visit.place.lastVisitDate.split('T')[0])}
+                  >
+                    Last {formatDate(visit.place.lastVisitDate)}
+                  </button>
                 )}
               </div>
             )}
@@ -230,6 +282,7 @@ function Timeline({ visits, selectedVisit, onVisitClick }) {
             className={`timeline-item ${isSelected ? 'selected' : ''}`}
             onClick={() => onVisitClick(isSelected ? null : visit)}
           >
+            <span className="item-number">{idx + 1}</span>
             <div className="item-thumb">
               {visit.place?.imageUrl ? (
                 <img src={visit.place.imageUrl} alt="" />
@@ -250,6 +303,47 @@ function Timeline({ visits, selectedVisit, onVisitClick }) {
 }
 
 // Helpers
+
+// Calculate distance between two lat/lon points in miles (Haversine formula)
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 3959 // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
+// Categorize activity type (same logic as map path coloring)
+function categorizeActivity(activityType) {
+  const type = (activityType || '').toLowerCase()
+  if (type.includes('walk')) return 'walking'
+  if (type.includes('bik') || type.includes('cycl')) return 'cycling'
+  if (type.includes('vehicle') || type.includes('driv') || type.includes('car') || type.includes('automotive')) return 'driving'
+  if (type.includes('transit') || type.includes('train') || type.includes('bus') || type.includes('subway') || type.includes('rail')) return 'transit'
+  return 'other'
+}
+
+// Calculate distances by mode from path data
+function calculateDistancesByMode(path) {
+  const distances = { walking: 0, cycling: 0, driving: 0, transit: 0, other: 0 }
+
+  if (!path || path.length < 2) return distances
+
+  for (let i = 1; i < path.length; i++) {
+    const prev = path[i - 1]
+    const curr = path[i]
+    const dist = haversineDistance(prev.lat, prev.lon, curr.lat, curr.lon)
+    const category = categorizeActivity(curr.activityType || prev.activityType)
+    distances[category] += dist
+  }
+
+  return distances
+}
+
 function getWeatherIcon(condition) {
   const c = (condition || '').toLowerCase()
   if (c.includes('clear') || c.includes('sunny')) return '☀️'
@@ -259,26 +353,6 @@ function getWeatherIcon(condition) {
   if (c.includes('snow')) return '❄️'
   if (c.includes('thunder') || c.includes('storm')) return '⛈️'
   if (c.includes('fog') || c.includes('mist')) return '🌫️'
-  return ''
-}
-
-function getActivityClass(type) {
-  const t = (type || '').toLowerCase()
-  if (t.includes('walk')) return 'walk'
-  if (t.includes('bik') || t.includes('cycl')) return 'bike'
-  if (t.includes('vehicle') || t.includes('driv') || t.includes('car')) return 'drive'
-  if (t.includes('run')) return 'walk'
-  if (t.includes('transit') || t.includes('bus') || t.includes('train')) return 'transit'
-  return 'other'
-}
-
-function getActivityLabel(type) {
-  const t = (type || '').toLowerCase()
-  if (t.includes('walk')) return 'walked'
-  if (t.includes('bik') || t.includes('cycl')) return 'biked'
-  if (t.includes('vehicle') || t.includes('driv') || t.includes('car')) return 'driven'
-  if (t.includes('run')) return 'ran'
-  if (t.includes('transit') || t.includes('bus') || t.includes('train')) return 'transit'
   return ''
 }
 

@@ -160,6 +160,7 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
             isLoading={isLoading}
             selectedVisit={selectedVisit}
             onVisitClick={setSelectedVisit}
+            onDateChange={handleDateChange}
           />
         </div>
       </main>

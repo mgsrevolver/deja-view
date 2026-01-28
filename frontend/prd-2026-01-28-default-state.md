@@ -1,10 +1,10 @@
 # PRD: Sidebar Default State
 **Date:** 2026-01-28
-**Status:** Ready for development
+**Status:** ✅ COMPLETE
 
 ## Problem
 
-When loading a day, before selecting any place, the sidebar shows "Select a place" as an empty state. This wastes valuable screen real estate and doesn't help the user understand their day.
+When loading a day, before selecting any place, the sidebar showed "Select a place" as an empty state. This wasted valuable screen real estate and didn't help the user understand their day.
 
 ## Solution
 
@@ -12,103 +12,53 @@ Hybrid approach: compact day summary at top + expanded timeline below. When a pl
 
 ---
 
-## Design
+## Completed Work
 
-### Default State (no place selected)
-
-```
-┌─────────────────────────────────┐
-│  DAY SUMMARY                    │
-│  ☀️ Clear · 72°/58°             │
-│  7 places · 4.2 mi · 4h 45m     │
-├─────────────────────────────────┤
-│  TIMELINE (expanded)            │
-│                                 │
-│  08:32  ☕ Blue Bottle Coffee   │
-│  09:15  🏢 Office               │
-│  12:30  🍜 Lunch spot           │
-│  ...                            │
-│  (scrollable, fills space)      │
-│                                 │
-│                                 │
-└─────────────────────────────────┘
-```
-
-### Place Selected State
-
-```
-┌─────────────────────────────────┐
-│  PLACE DETAIL                   │
-│  [Hero image]                   │
-│  Blue Bottle Coffee             │
-│  123 Main St                    │
-│  Today: 08:32 - 09:10 (38 min)  │
-│  Your History: 47 visits        │
-│  [Close X]                      │
-├─────────────────────────────────┤
-│  TIMELINE (compact, 200px)      │
-│  08:32  ☕ Blue Bottle ←selected │
-│  09:15  🏢 Office               │
-│  12:30  🍜 Lunch spot           │
-└─────────────────────────────────┘
-```
-
----
-
-## Requirements
-
-### Day Summary Card
-- **Weather row**: Emoji + condition + high/low temps
-- **Stats row**: Place count · total distance · total active time
-- Compact—shouldn't dominate, just provide context
+### Day Summary Card ✅
+- Weather row: emoji + condition + high/low temps
+- Stats row: place count, total distance, active time
 - Only shows when no place is selected
-- Graceful degradation: hide weather row if not enriched
+- Graceful degradation when data missing
 
-### Timeline Behavior
-- **Default**: Expands to fill available sidebar space
-- **Place selected**: Shrinks to fixed height (~200px)
-- Smooth transition between states (CSS transition on height)
-- Selected item should remain visible (scroll into view)
+### Timeline Behavior ✅
+- Expands to fill sidebar when no place selected
+- Shrinks to compact height when place selected
+- CSS class toggles: `.expanded` / `.compact`
 
-### Transitions
-- Summary card fades out when place selected
-- Place panel fades/slides in
-- Timeline height animates smoothly
-- Keep transitions snappy (200-300ms)
+### Travel Stats Bar ✅ (bonus)
+- Persistent bar showing distance by mode
+- Walking, cycling, driving, transit, other
+- Color-coded dots matching map path colors
+- Calculated directly from path data (Haversine formula)
+- Always visible regardless of selection state
 
----
+### Visit Numbers ✅ (bonus)
+- Numbers on map markers (1, 2, 3...)
+- Matching numbers in timeline items
+- Makes it easy to correlate map ↔ timeline
 
-## Data Available
+### Date Navigation ✅ (bonus)
+- First/last visit dates in place detail are now clickable
+- Clicking navigates to that historical day
+- Enables exploring your history at a place
 
-From `/api/days/:date` response, already have:
-- `summary.weather` - condition, emoji, high, low
-- `summary.placeCount` - number of visits
-- `summary.totalDistanceMiles` - distance traveled
-- `summary.totalActiveMinutes` - time at places
-- `visits[]` - full timeline data
-
-No new API work needed.
-
----
-
-## Files to Change
-
-- `Sidebar.jsx` - Add summary card, conditional timeline height
-- `App.css` - Styles for summary card, height transitions
+### Transit Support ✅ (bonus)
+- Added transit as activity type
+- Blue color for transit paths on map
+- Shows in travel stats bar
 
 ---
 
-## Out of Scope
-
-- Richer summary content (save for later)
-- Animation libraries (CSS only)
-- Changes to place detail panel
+## Files Changed
+- `Sidebar.jsx` - Summary card, expanded timeline, travel stats, date links
+- `MapPane.jsx` - Numbered markers, transit color, removed legend
+- `JournalView.jsx` - Pass onDateChange to Sidebar
+- `App.css` - All new styles
 
 ---
 
-## Success Criteria
-
-1. Loading a day immediately shows useful information
-2. No "empty state" feeling—sidebar always has content
-3. Selecting a place feels like drilling in, not filling a void
-4. Transitions feel smooth and intentional
+## Design Decisions
+- Travel stats bar is always visible (provides context even when viewing place detail)
+- Visit numbers help users mentally map timeline to markers
+- Date links enable serendipitous exploration of history
+- Removed map legend since travel stats bar serves same purpose better
