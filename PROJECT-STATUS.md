@@ -1,8 +1,8 @@
 # Project Status - Deja View
 
 **Project Name**: Deja View _(You've been here before)_
-**Last Updated**: 2026-01-26
-**Current Phase**: Phase 4.5 - Timezone Fix & UI Refinements
+**Last Updated**: 2026-01-29
+**Current Phase**: Phase 6 - Polish & Integrations
 
 ---
 
@@ -24,10 +24,9 @@
 - Calendar picker with data highlighting
 - Prev/Next/Today navigation
 - "Interesting day" auto-selection (most unique places)
-- Placeholder cards for future enrichments (weather, music, photos)
 - Distance traveled breakdown by activity type
 
-### Phase 3 - Place Enrichment (Partial)
+### Phase 3 - Place Enrichment
 - Google Places API integration
 - Enrichment CLI script (`backend/scripts/enrich-places.js`)
 - **3,335 places enriched** with names, addresses, types, photo URLs
@@ -57,30 +56,47 @@
 - User menu in header (email + sign out)
 - Protected routes (shows LoginPage when unauthenticated)
 
-**UI Improvements:**
-- Interactive timeline: click visit → map zooms + overlay appears
-- Visit overlay: photo, name, address, duration, place stats
-- Selected visit highlighting (purple)
-- Distance card redesign: clear rows with indicators, emoji, labels
-- Distance units: miles (feet for short distances)
-
 **Migration Scripts:**
 - `scripts/apply-rls.js` - Applies RLS policies
 - `scripts/migrate-user-data.js` - Assigns existing data to user account
 
-### Phase 4.5 - Timezone Fix & UI Refinements (In Progress)
+### Phase 5 - Weather & UI Polish
 **Backend:**
 - Timezone-aware date queries (`tz` parameter on all date endpoints)
 - Visits now grouped by local date, not UTC
 - Helper functions: `toLocalDateString()`, `getDayBoundaries()`, `getMonthBoundaries()`
-- Weather enrichment service scaffolding (`backend/src/services/weather-enrichment.js`)
+- Open-Meteo weather enrichment service (`backend/src/services/weather-enrichment.js`)
 - Weather enrichment CLI script (`backend/scripts/enrich-weather.js`)
+- Weather data backfilled for historical dates
 
-**Frontend:**
-- Map markers click-to-select (replaced popups with overlay)
-- Compact sidebar layout (68/32 split instead of 60/40)
-- Tighter spacing and smaller fonts in sidebar
-- WIP: Additional UI refinements
+**Frontend - Import & Data Loading:**
+- Drag-and-drop import modal (`ImportModal.jsx`)
+- Google Takeout instructions in UI
+- Upload progress states and success summary
+- Skeleton loaders for place panel and timeline
+
+**Frontend - Map Enhancements:**
+- CartoDB Dark Matter tiles (muted dark basemap)
+- Weather mood overlay (subtle color tint based on conditions)
+- Numbered markers matching timeline order
+- Map markers click-to-select (replaced popups)
+- Transit paths supported (blue color)
+
+**Frontend - Sidebar Redesign:**
+- Compact layout (68/32 split)
+- Day summary card: weather emoji + condition + high/low temps
+- Stats row: place count, total distance, active time
+- Persistent travel stats bar (walking/biking/driving/transit)
+- Expanded timeline when no place selected
+- Compact timeline when place selected
+
+**Frontend - Place Detail:**
+- Hero photo from Google Places
+- Place name, address, types
+- Today's visit time and duration
+- History card: total visits, time spent
+- Clickable first/last visit dates for navigation
+- Photo thumbnails in timeline items
 
 ---
 
@@ -97,14 +113,10 @@
 
 ## Next Steps
 
-### Phase 5 - Weather Enrichment
-- Open-Meteo API (free, historical data)
-- Store in DayData table
-- Display in weather card
-
-### Phase 6 - Remaining Place Enrichment
-1. **OSM Nominatim fallback** - For failed Place IDs and free tier users
-2. **Display place photos** - Photo URLs are stored, overlay shows placeholder
+### Phase 6 - Polish & Integrations (Current)
+1. **OSM Nominatim fallback** - For 171 failed Place IDs (expired businesses)
+2. **UI polish** - Any remaining rough edges
+3. **Performance optimization** - Large day loading, calendar rendering
 
 ### Phase 7 - Tier 2 Access (Non-technical users)
 - OAuth flow for Google Cloud connection, OR
@@ -179,7 +191,7 @@ node scripts/enrich-places.js --limit=100
 | Frontend | React 19, Vite, React Query, Leaflet, date-fns |
 | Backend | Node.js, Express, Prisma |
 | Database | PostgreSQL (Supabase) |
-| APIs | Google Places (enrichment), Open-Meteo (planned) |
+| APIs | Google Places (enrichment), Open-Meteo (weather) |
 
 ---
 
@@ -208,17 +220,17 @@ node scripts/enrich-places.js --limit=100
 frontend/
   src/
     components/
-      JournalView.jsx    # Main split-screen layout
-      MapPane.jsx        # Leaflet map with markers/paths/overlays
-      Sidebar.jsx        # Day summary + timeline
-      VisitCard.jsx      # Individual visit display
+      JournalView.jsx    # Main 68/32 split layout
+      MapPane.jsx        # Dark tiles, numbered markers, mood overlay
+      Sidebar.jsx        # Day summary, travel stats, timeline, place detail
+      ImportModal.jsx    # Drag-and-drop Google Takeout upload
       CalendarPicker.jsx # Date navigation modal
       LoginPage.jsx      # Auth login/signup form
     contexts/
       AuthContext.jsx    # Auth state + useAuth hook
     lib/
       supabase.js        # Supabase client init
-      api.js             # fetchWithAuth() helper
+      api.js             # fetchWithAuth() + uploadFile() helpers
     App.jsx              # Root with auth gating
     main.jsx             # AuthProvider + QueryClientProvider
 
@@ -228,8 +240,10 @@ backend/
     services/
       location-import.js   # Google Takeout parser
       place-enrichment.js  # Google Places + OSM integration
+      weather-enrichment.js # Open-Meteo historical weather
   scripts/
-    enrich-places.js       # CLI for batch enrichment
+    enrich-places.js       # CLI for batch place enrichment
+    enrich-weather.js      # CLI for batch weather enrichment
     apply-rls.js           # Apply RLS policies to Supabase
     migrate-user-data.js   # Assign existing data to user
   prisma/
@@ -289,7 +303,7 @@ claude "Read PROJECT-STATUS.md. You have the [ROLE] role today."
 - React 19 frontend (Vite, React Query, Leaflet) on port 5173
 - Node/Express backend (Prisma ORM) on port 3001
 - Supabase PostgreSQL database
-- Currently in Phase 3: place enrichment complete, weather enrichment next
+- Currently in Phase 6: Polish & Integrations
 
 **Responsibilities**:
 - Coordinate work between frontend and backend specialists
@@ -300,9 +314,9 @@ claude "Read PROJECT-STATUS.md. You have the [ROLE] role today."
 - Ensure schema changes are synced (Prisma migrations)
 
 **Current Priorities**:
-1. OSM Nominatim fallback for failed Place IDs
-2. Display place photos in VisitCard component
-3. Weather enrichment (Open-Meteo API, DayData table)
+1. OSM Nominatim fallback for 171 failed Place IDs
+2. UI polish and bug fixes
+3. Performance optimization
 
 **Constraints**:
 - Only coordinate and delegate
@@ -322,22 +336,26 @@ claude "Read PROJECT-STATUS.md. You have the [ROLE] role today."
 - Path: `frontend/src/`
 
 **Components**:
-- `JournalView.jsx` - 60/40 split layout
-- `MapPane.jsx` - Leaflet map with markers/paths
-- `Sidebar.jsx` - Day summary + timeline
-- `VisitCard.jsx` - Individual visit display
-- `CalendarPicker.jsx` - Date navigation
+- `JournalView.jsx` - 68/32 split layout with date navigation
+- `MapPane.jsx` - Dark tiles, numbered markers, mood overlay, paths
+- `Sidebar.jsx` - Day summary, travel stats, timeline, place detail
+- `ImportModal.jsx` - Drag-and-drop Google Takeout upload
+- `CalendarPicker.jsx` - Date navigation modal
+- `LoginPage.jsx` - Auth login/signup form
 
-**Current Tasks**:
-- Display place photos in VisitCard (URLs already in API response)
-- Show addresses in visit cards (data exists, needs UI)
-- Future: weather card component for DayData
+**Current State**:
+- Photos rendering in timeline thumbnails and place detail hero
+- Weather showing in day summary card
+- Numbered markers correlating map ↔ timeline
+- Travel stats bar always visible
+- Clickable first/last visit dates
 
 **API Endpoints You Consume**:
 - `GET /api/stats` - Overall stats
 - `GET /api/days?month=YYYY-MM` - Days with visit counts
-- `GET /api/days/:date` - Full day data
+- `GET /api/days/:date` - Full day data (visits, path, weather, place stats)
 - `GET /api/interesting-day` - Day with most unique places
+- `POST /api/import` - Upload Google Takeout file
 
 **Constraints**:
 - NEVER touch backend code (`backend/` directory)
@@ -369,20 +387,22 @@ claude "Read PROJECT-STATUS.md. You have the [ROLE] role today."
 **Services**:
 - `location-import.js` - Google Takeout parser (18k visits in ~15s)
 - `place-enrichment.js` - Google Places + OSM Nominatim integration
+- `weather-enrichment.js` - Open-Meteo historical weather
 
 **Scripts**:
-- `enrich-places.js` - Batch enrichment CLI
+- `enrich-places.js` - Batch place enrichment CLI
+- `enrich-weather.js` - Batch weather enrichment CLI
 
 **Current Tasks**:
 - Add OSM Nominatim fallback for 171 failed Place IDs (expired businesses)
-- Implement Open-Meteo weather enrichment for DayData table
-- Optimize API costs through global caching
+- Performance optimization for large datasets
 
 **API Endpoints You Maintain**:
 - `GET /api/stats`
 - `GET /api/days?month=YYYY-MM`
 - `GET /api/days/:date`
 - `GET /api/interesting-day`
+- `POST /api/import`
 - `GET /health`
 
 **Environment Variables**:

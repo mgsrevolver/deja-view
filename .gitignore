@@ -33,3 +33,6 @@ coverage/
 # Sensitive location data
 records.json
 scripts/*.json
+
+# Generated share images
+backend/generated-images/

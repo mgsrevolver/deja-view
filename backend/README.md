@@ -9,6 +9,7 @@ Node.js + Express backend for Déjà View location journaling app.
 - **Prisma** - ORM for PostgreSQL
 - **Supabase** - Managed PostgreSQL + Auth
 - **Multer** - File upload handling
+- **Sharp** - Image generation for sharing
 
 ## Setup
 
@@ -64,8 +65,18 @@ Server will run on `http://localhost:3001`
   - Weather with mood/emoji
   - Summary stats (place count, distance, active time)
 
-### Places (Coming Soon)
-- `GET /api/places/:id` - Get place details with visit statistics
+### Places
+- `GET /api/places/:id` - Get place details with user-specific visit stats:
+  - Place info (name, address, image, types)
+  - Stats (first/last visit, total visits, unique days, avg duration)
+  - Recent visits (last 10)
+
+### Share Images
+- `POST /api/share/generate-image` - Generate shareable day summary image
+  - Request body: `{ date, placeIds?, options: { showTimes, showDurations, showPlaceNames } }`
+  - Returns: `{ imageId, imageUrl }`
+- `GET /api/share/images/:imageId.png` - Download generated image
+- `GET /api/share/history` - List user's previously generated images
 
 ## Database Schema
 
@@ -78,13 +89,34 @@ See `prisma/schema.prisma` for complete schema:
 - **DayData** - Daily aggregations (weather, distance, etc.)
 - **Enrichment** - API call tracker
 - **WeatherCache** - Shared weather data by ZIP+date
+- **SharedImage** - Generated share images metadata
 
 ## Enrichment
 
+### Automatic (after import)
 Weather enrichment runs automatically after import:
 - Uses free Open-Meteo Archive API
 - ZIP code caching for efficiency
 - Mood categories (clear, rain, snow, etc.) for UI theming
+
+### CLI Scripts
+
+**Place enrichment with Google Places API:**
+```bash
+node scripts/enrich-places.js [--dry-run] [--limit=N]
+```
+
+**OSM Nominatim fallback for failed places:**
+```bash
+node scripts/enrich-osm-fallback.js [--dry-run] [--limit=N]
+```
+Use this for places where Google Place IDs have expired (closed businesses).
+Gets address and business names from OpenStreetMap (free, rate-limited 1 req/sec).
+
+**Weather enrichment:**
+```bash
+node scripts/enrich-weather.js [--dry-run] [--limit=N]
+```
 
 ## Development
 

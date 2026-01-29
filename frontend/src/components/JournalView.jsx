@@ -6,7 +6,8 @@ import MapPane from './MapPane'
 import Sidebar from './Sidebar'
 import CalendarPicker from './CalendarPicker'
 import ImportModal from './ImportModal'
-import { useState } from 'react'
+import ShareModal from './ShareModal'
+import { useState, useMemo } from 'react'
 
 function getWeatherIcon(condition) {
   const c = (condition || '').toLowerCase()
@@ -24,6 +25,7 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
   const { user, signOut } = useAuth()
   const [showCalendar, setShowCalendar] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showShare, setShowShare] = useState(false)
   const [selectedVisit, setSelectedVisit] = useState(null)
   const queryClient = useQueryClient()
 
@@ -75,6 +77,11 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
     ? format(parseISO(selectedDate), 'EEEE, MMMM d, yyyy')
     : 'Select a date'
 
+  // Check if day has shareable content (places with photos)
+  const hasShareableContent = useMemo(() => {
+    return dayData?.visits?.some(v => v.place?.imageUrl)
+  }, [dayData])
+
   // Build day summary parts
   const summaryParts = []
   if (dayData?.weather?.condition) {
@@ -117,6 +124,11 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
             <button className="nav-btn today-btn" onClick={handleToday} title="Go to today">
               Today
             </button>
+            {hasShareableContent && (
+              <button className="nav-btn share-btn" onClick={() => setShowShare(true)} title="Share this day">
+                Share
+              </button>
+            )}
           </div>
           {summaryParts.length > 0 && (
             <div className="day-summary">
@@ -182,6 +194,15 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
         <ImportModal
           onClose={() => setShowImport(false)}
           onSuccess={handleImportSuccess}
+        />
+      )}
+
+      {/* Share modal */}
+      {showShare && (
+        <ShareModal
+          dayData={dayData}
+          date={selectedDate}
+          onClose={() => setShowShare(false)}
         />
       )}
     </div>

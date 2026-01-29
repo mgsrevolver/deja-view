@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -68,9 +68,9 @@ const createIcon = (color, isSelected = false, number = null) => L.divIcon({
 })
 
 const colors = {
-  home: '#10b981',      // green
-  work: '#3b82f6',      // blue
-  default: '#8b5cf6',   // purple
+  home: '#34d399',      // green (matches --color-walk)
+  work: '#60a5fa',      // soft blue (matches --blue)
+  default: '#f59e0b',   // amber (matches --accent)
 }
 
 function getColor(semanticType) {
@@ -99,37 +99,52 @@ function FitBounds({ visits, path }) {
   return null
 }
 
-// Component to zoom to a selected visit
-function ZoomToVisit({ visit }) {
+// Component to zoom to a selected visit, or fit all bounds when deselected
+function ZoomToVisit({ visit, visits, path }) {
   const map = useMap()
+  const prevVisitRef = useRef(undefined)
 
   useEffect(() => {
+    const hadPreviousVisit = prevVisitRef.current !== undefined && prevVisitRef.current !== null
+
     if (visit) {
       map.flyTo([visit.lat, visit.lon], 17, { duration: 0.8 })
+    } else if (hadPreviousVisit) {
+      // Only zoom out when actively deselecting (not on initial load)
+      const points = [
+        ...visits.map(v => [v.lat, v.lon]),
+        ...path.map(p => [p.lat, p.lon])
+      ]
+      if (points.length > 0) {
+        const bounds = L.latLngBounds(points)
+        map.flyToBounds(bounds, { padding: [50, 50], duration: 0.8 })
+      }
     }
-  }, [visit, map])
+
+    prevVisitRef.current = visit
+  }, [visit, visits, path, map])
 
   return null
 }
 
-// Color path segments by activity type
+// Color path segments by activity type (Golden Hour palette)
 function getPathColor(activityType) {
   const type = (activityType || '').toLowerCase()
-  if (type.includes('walk')) return '#10b981'
-  if (type.includes('bik') || type.includes('cycl')) return '#f59e0b'
-  if (type.includes('vehicle') || type.includes('driv')) return '#ef4444'
-  if (type.includes('transit') || type.includes('train') || type.includes('bus') || type.includes('subway')) return '#3b82f6'
-  return '#6b7280'
+  if (type.includes('walk')) return '#34d399'      // green
+  if (type.includes('bik') || type.includes('cycl')) return '#2dd4bf'  // teal
+  if (type.includes('vehicle') || type.includes('driv')) return '#fb923c'  // coral/orange
+  if (type.includes('transit') || type.includes('train') || type.includes('bus') || type.includes('subway')) return '#60a5fa'  // soft blue
+  return '#9ca3af'  // warm gray
 }
 
-// Weather mood colors (very subtle - 5% opacity max)
+// Weather mood colors (Golden Hour - warm tints)
 function getWeatherMood(condition) {
   const c = (condition || '').toLowerCase()
-  if (c.includes('clear') || c.includes('sunny')) return 'rgba(251, 191, 36, 0.05)' // warm golden
+  if (c.includes('clear') || c.includes('sunny')) return 'rgba(251, 191, 36, 0.06)' // golden hour glow
   if (c.includes('rain') || c.includes('drizzle')) return 'rgba(96, 165, 250, 0.04)' // cool blue
   if (c.includes('snow')) return 'rgba(226, 232, 240, 0.05)' // cool bright
-  if (c.includes('fog') || c.includes('mist')) return 'rgba(148, 163, 184, 0.04)' // muted gray
-  if (c.includes('cloud') || c.includes('overcast')) return 'rgba(148, 163, 184, 0.03)' // subtle gray
+  if (c.includes('fog') || c.includes('mist')) return 'rgba(184, 176, 164, 0.04)' // warm muted
+  if (c.includes('cloud') || c.includes('overcast')) return 'rgba(156, 163, 175, 0.03)' // subtle warm gray
   return null
 }
 
@@ -185,7 +200,7 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
         />
 
         <FitBounds visits={visits} path={path} />
-        {selectedVisit && <ZoomToVisit visit={selectedVisit} />}
+        <ZoomToVisit visit={selectedVisit} visits={visits} path={path} />
 
         {/* Draw path segments colored by activity */}
         {pathSegments.map((segment, idx) => (

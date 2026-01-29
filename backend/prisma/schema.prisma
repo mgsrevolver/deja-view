@@ -17,10 +17,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  locations   Location[]
-  visits      Visit[]
-  dayData     DayData[]
-  enrichments Enrichment[]
+  locations    Location[]
+  visits       Visit[]
+  dayData      DayData[]
+  enrichments  Enrichment[]
+  sharedImages SharedImage[]
 }
 
 // Raw GPS pings (for path drawing and distance calculations)
@@ -163,4 +164,18 @@ model Enrichment {
   @@index([type, status])         // System-wide enrichment queries
   @@index([visitId])
   @@index([date])
+}
+
+// Shareable day images (generated for social sharing)
+model SharedImage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String   // The day being shared (YYYY-MM-DD)
+  filename  String   // Stored filename in generated-images/
+  options   Json     // { showTimes, showDurations, showPlaceNames, placeIds }
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, date])
 }

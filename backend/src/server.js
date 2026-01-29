@@ -2,11 +2,18 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
+import path from 'path';
+import fs from 'fs/promises';
+import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
 import { parseGoogleTakeoutData, importToDatabase } from './services/location-import.js';
 import { enrichDayWeather, getEnrichmentStats, getWeatherMood } from './services/weather-enrichment.js';
 import { enrichPlace, getPlaceCoordinates } from './services/place-enrichment.js';
+import { generateDayImage, generateTestImage } from './services/image-generator.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const GENERATED_IMAGES_DIR = path.join(__dirname, '../generated-images');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -433,6 +440,85 @@ app.get('/api/interesting-day', authMiddleware, async (req, res) => {
   }
 });
 
+// Get place details with user-specific visit statistics
+app.get('/api/places/:id', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id: placeId } = req.params;
+    const { tz } = req.query;
+
+    // Get place details
+    const place = await prisma.place.findUnique({
+      where: { id: placeId }
+    });
+
+    if (!place) {
+      return res.status(404).json({ error: 'Place not found' });
+    }
+
+    // Get user-specific visit stats
+    const visitStats = await prisma.visit.aggregate({
+      where: { userId, placeID: placeId },
+      _min: { startTime: true },
+      _max: { startTime: true },
+      _count: true,
+      _sum: { durationMinutes: true }
+    });
+
+    // Get recent visits (last 10)
+    const recentVisits = await prisma.visit.findMany({
+      where: { userId, placeID: placeId },
+      orderBy: { startTime: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        durationMinutes: true
+      }
+    });
+
+    // Calculate unique days visited
+    const allVisits = await prisma.visit.findMany({
+      where: { userId, placeID: placeId },
+      select: { startTime: true }
+    });
+    const uniqueDays = new Set(
+      allVisits.map(v => toLocalDateString(v.startTime, tz))
+    ).size;
+
+    // Calculate average visit duration
+    const avgDuration = visitStats._count > 0 && visitStats._sum.durationMinutes
+      ? Math.round(visitStats._sum.durationMinutes / visitStats._count)
+      : null;
+
+    res.json({
+      id: place.id,
+      name: place.name,
+      address: place.address,
+      imageUrl: place.defaultImageUrl,
+      types: place.types,
+      stats: {
+        firstVisit: visitStats._min.startTime,
+        lastVisit: visitStats._max.startTime,
+        totalVisits: visitStats._count,
+        totalMinutes: visitStats._sum.durationMinutes || 0,
+        uniqueDays,
+        avgDurationMinutes: avgDuration
+      },
+      recentVisits: recentVisits.map(v => ({
+        id: v.id,
+        date: toLocalDateString(v.startTime, tz),
+        startTime: v.startTime,
+        endTime: v.endTime,
+        durationMinutes: v.durationMinutes
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /**
  * Run background enrichment for a user
  * Enriches weather for all days without weather data
@@ -622,6 +708,198 @@ app.get('/api/enrichment-status', authMiddleware, async (req, res) => {
       error: job.error
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// SHARE IMAGE ENDPOINTS
+// ============================================
+
+// Generate shareable day image
+app.post('/api/share/generate-image', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { date, placeIds, options = {} } = req.body;
+
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    // Get day boundaries
+    const { dayStart, dayEnd } = getDayBoundaries(date, options.tz);
+
+    // Fetch visits for the date
+    let visits = await prisma.visit.findMany({
+      where: {
+        userId,
+        startTime: { gte: dayStart, lte: dayEnd }
+      },
+      include: { place: true },
+      orderBy: { startTime: 'asc' }
+    });
+
+    // Filter to selected places if provided
+    if (placeIds && placeIds.length > 0) {
+      visits = visits.filter(v => placeIds.includes(v.placeID));
+    }
+
+    // Filter to visits with photos
+    const visitsWithPhotos = visits.filter(v => v.place?.defaultImageUrl);
+
+    if (visitsWithPhotos.length === 0) {
+      return res.status(400).json({
+        error: 'No visits with photos found for this date',
+        hint: 'Select at least one place with a photo'
+      });
+    }
+
+    // Get day data for weather
+    const dayData = await prisma.dayData.findFirst({
+      where: { userId, date: new Date(`${date}T00:00:00.000Z`) }
+    });
+
+    // Calculate total distance in miles
+    const totalDistanceMeters = dayData?.totalDistance || 0;
+    const totalDistanceMiles = totalDistanceMeters / 1609.34;
+
+    // Map visits to expected format
+    const mappedVisits = visitsWithPhotos.map(v => ({
+      id: v.id,
+      placeID: v.placeID,
+      startTime: v.startTime,
+      endTime: v.endTime,
+      durationMinutes: v.durationMinutes,
+      place: {
+        name: v.place?.name,
+        imageUrl: v.place?.defaultImageUrl
+      }
+    }));
+
+    // Generate image
+    const imageBuffer = await generateDayImage({
+      date,
+      visits: mappedVisits,
+      weather: dayData?.weather || null,
+      totalDistance: totalDistanceMiles,
+      options: {
+        showTimes: options.showTimes ?? false,
+        showDurations: options.showDurations ?? true,
+        showPlaceNames: options.showPlaceNames ?? true
+      }
+    });
+
+    // Generate filename and save
+    const imageId = `${userId.substring(0, 8)}_${date}_${Date.now()}`;
+    const filename = `${imageId}.png`;
+    const filepath = path.join(GENERATED_IMAGES_DIR, filename);
+
+    await fs.writeFile(filepath, imageBuffer);
+
+    // Store reference in database
+    const sharedImage = await prisma.sharedImage.create({
+      data: {
+        userId,
+        date,
+        filename,
+        options: {
+          placeIds: placeIds || visitsWithPhotos.map(v => v.placeID),
+          showTimes: options.showTimes ?? false,
+          showDurations: options.showDurations ?? true,
+          showPlaceNames: options.showPlaceNames ?? true
+        }
+      }
+    });
+
+    console.log(`[SHARE] Generated image ${sharedImage.id} for user ${userId}, date ${date}`);
+
+    res.json({
+      imageId: sharedImage.id,
+      imageUrl: `/api/share/images/${sharedImage.id}.png`
+    });
+
+  } catch (error) {
+    console.error('[SHARE] Generate error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Serve generated image
+app.get('/api/share/images/:imageId.png', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { imageId } = req.params;
+
+    // Find image record
+    const sharedImage = await prisma.sharedImage.findUnique({
+      where: { id: imageId }
+    });
+
+    if (!sharedImage) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    // Verify ownership
+    if (sharedImage.userId !== userId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Read and serve file
+    const filepath = path.join(GENERATED_IMAGES_DIR, sharedImage.filename);
+
+    try {
+      const imageBuffer = await fs.readFile(filepath);
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'private, max-age=3600');
+      res.send(imageBuffer);
+    } catch (fileError) {
+      console.error('[SHARE] File read error:', fileError);
+      return res.status(404).json({ error: 'Image file not found' });
+    }
+
+  } catch (error) {
+    console.error('[SHARE] Serve error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List user's generated images
+app.get('/api/share/history', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const images = await prisma.sharedImage.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    });
+
+    res.json({
+      images: images.map(img => ({
+        imageId: img.id,
+        date: img.date,
+        createdAt: img.createdAt,
+        imageUrl: `/api/share/images/${img.id}.png`
+      }))
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Test endpoint for image generation (development only)
+app.get('/api/share/test-image', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  try {
+    const imageBuffer = await generateTestImage();
+    res.set('Content-Type', 'image/png');
+    res.send(imageBuffer);
+  } catch (error) {
+    console.error('[SHARE] Test image error:', error);
     res.status(500).json({ error: error.message });
   }
 });
