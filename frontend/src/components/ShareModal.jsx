@@ -9,9 +9,9 @@ export default function ShareModal({ dayData, date, onClose }) {
     return dayData.visits.filter(v => v.place?.imageUrl)
   }, [dayData])
 
-  // State
+  // State - use visit.placeID (foreign key) not visit.place.id
   const [selectedPlaceIds, setSelectedPlaceIds] = useState(() =>
-    placesWithPhotos.map(v => v.place.id)
+    placesWithPhotos.map(v => v.placeID)
   )
   const [showTimes, setShowTimes] = useState(false)
   const [showDurations, setShowDurations] = useState(true)
@@ -21,7 +21,7 @@ export default function ShareModal({ dayData, date, onClose }) {
   const [error, setError] = useState(null)
 
   // Derived state
-  const selectedPlaces = placesWithPhotos.filter(v => selectedPlaceIds.includes(v.place.id))
+  const selectedPlaces = placesWithPhotos.filter(v => selectedPlaceIds.includes(v.placeID))
   const canGenerate = selectedPlaces.length > 0
 
   // Handlers
@@ -33,7 +33,7 @@ export default function ShareModal({ dayData, date, onClose }) {
     )
   }
 
-  const selectAll = () => setSelectedPlaceIds(placesWithPhotos.map(v => v.place.id))
+  const selectAll = () => setSelectedPlaceIds(placesWithPhotos.map(v => v.placeID))
   const deselectAll = () => setSelectedPlaceIds([])
 
   const handleGenerate = async () => {
@@ -153,7 +153,7 @@ export default function ShareModal({ dayData, date, onClose }) {
           <div className="polaroid-stack">
             {selectedPlaces.slice(0, 4).map((visit, idx) => (
               <div
-                key={visit.place.id}
+                key={visit.placeID}
                 className="polaroid-preview"
                 style={{
                   '--rotation': `${(idx % 2 === 0 ? -1 : 1) * (3 + idx * 2)}deg`,
@@ -195,11 +195,11 @@ export default function ShareModal({ dayData, date, onClose }) {
 
           <div className="share-place-list">
             {placesWithPhotos.map(visit => (
-              <label key={visit.place.id} className="share-place-item">
+              <label key={visit.placeID} className="share-place-item">
                 <input
                   type="checkbox"
-                  checked={selectedPlaceIds.includes(visit.place.id)}
-                  onChange={() => togglePlace(visit.place.id)}
+                  checked={selectedPlaceIds.includes(visit.placeID)}
+                  onChange={() => togglePlace(visit.placeID)}
                 />
                 <div className="share-place-thumb">
                   <img src={visit.place.imageUrl} alt="" />

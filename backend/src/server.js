@@ -729,6 +729,9 @@ app.post('/api/share/generate-image', authMiddleware, async (req, res) => {
     // Get day boundaries
     const { dayStart, dayEnd } = getDayBoundaries(date, options.tz);
 
+    console.log(`[SHARE] Generate request: user=${userId}, date=${date}, tz=${options.tz || 'UTC'}`);
+    console.log(`[SHARE] Day boundaries: ${dayStart.toISOString()} to ${dayEnd.toISOString()}`);
+
     // Fetch visits for the date
     let visits = await prisma.visit.findMany({
       where: {
@@ -739,18 +742,53 @@ app.post('/api/share/generate-image', authMiddleware, async (req, res) => {
       orderBy: { startTime: 'asc' }
     });
 
+    console.log(`[SHARE] Found ${visits.length} visits for date`);
+
     // Filter to selected places if provided
     if (placeIds && placeIds.length > 0) {
+      console.log(`[SHARE] placeIds filter requested:`, placeIds.slice(0, 3));
+      console.log(`[SHARE] Actual visit placeIDs:`, visits.slice(0, 3).map(v => v.placeID));
       visits = visits.filter(v => placeIds.includes(v.placeID));
+      console.log(`[SHARE] After placeIds filter: ${visits.length} visits`);
     }
 
     // Filter to visits with photos
     const visitsWithPhotos = visits.filter(v => v.place?.defaultImageUrl);
+    console.log(`[SHARE] Visits with photos: ${visitsWithPhotos.length}`);
+
+    // Debug: log places and their photo status
+    if (visitsWithPhotos.length === 0 && visits.length > 0) {
+      console.log(`[SHARE] Places without photos:`);
+      visits.slice(0, 5).forEach(v => {
+        console.log(`  - ${v.place?.name || 'unnamed'}: imageUrl=${v.place?.defaultImageUrl ? 'YES' : 'NO'}`);
+      });
+    }
 
     if (visitsWithPhotos.length === 0) {
+      // Get visits before placeIds filter for debug
+      const allVisitsForDay = await prisma.visit.findMany({
+        where: {
+          userId,
+          startTime: { gte: dayStart, lte: dayEnd }
+        },
+        include: { place: true }
+      });
+
       return res.status(400).json({
         error: 'No visits with photos found for this date',
-        hint: 'Select at least one place with a photo'
+        hint: placeIds?.length > 0
+          ? 'The selected placeIds do not match any visits for this date'
+          : 'Select at least one place with a photo',
+        debug: {
+          totalVisitsForDay: allVisitsForDay.length,
+          visitsAfterFilter: visits.length,
+          placeIdsRequested: placeIds?.slice(0, 3) || [],
+          actualPlaceIds: allVisitsForDay.slice(0, 5).map(v => v.placeID),
+          placesWithPhotos: allVisitsForDay.filter(v => v.place?.defaultImageUrl).map(v => ({
+            placeID: v.placeID,
+            name: v.place?.name
+          }))
+        }
       });
     }
 
