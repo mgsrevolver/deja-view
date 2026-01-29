@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { format, parseISO } from 'date-fns'
-import { fetchWithAuth } from '../lib/api'
+import { fetchWithAuth, fetchBlobWithAuth } from '../lib/api'
 
 export default function ShareModal({ dayData, date, onClose }) {
   // Filter to only places with photos
@@ -65,15 +65,25 @@ export default function ShareModal({ dayData, date, onClose }) {
     }
   }
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!generatedImageUrl) return
 
-    const link = document.createElement('a')
-    link.href = generatedImageUrl
-    link.download = `deja-view-${date}.png`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    try {
+      // Fetch the image as a blob (needs auth)
+      const blob = await fetchBlobWithAuth(generatedImageUrl)
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `deja-view-${date}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      setError('Failed to download image')
+    }
   }
 
   const handleBack = () => {

@@ -6,12 +6,15 @@ Transform your Google Location History into an enriched, browseable journal with
 
 ## Features
 
-- **Interactive Map** - View visits and travel paths on a Leaflet map
-- **Timeline Sidebar** - Chronological list of places visited with duration
-- **Place Enrichment** - Automatically resolve place names, addresses, and photos
-- **Distance Analytics** - Track walking, cycling, and driving distances
+- **Interactive Map** - Dark-themed map with visit markers, travel paths, and weather mood overlay
+- **Timeline Sidebar** - Chronological list of places with photos, durations, and visit history
+- **Place Enrichment** - Automatically resolve place names, addresses, and photos via Google Places
+- **Weather Data** - Historical weather conditions displayed for each day
+- **Distance Analytics** - Track walking, cycling, driving, and transit distances
 - **Calendar Navigation** - Browse any day in your location history
-- **Fast Import** - Import 18k+ visits in ~15 seconds
+- **Share Image** - Generate Instagram-style Polaroid collage of your day
+- **Authentication** - Secure multi-user support with Supabase Auth
+- **Fast Import** - Drag-and-drop import of 18k+ visits in ~15 seconds
 
 ## Screenshots
 
@@ -103,11 +106,12 @@ node scripts/enrich-places.js
 - [x] Calendar navigation
 - [x] Distance analytics by activity type
 - [x] Google Places enrichment
+- [x] Weather data enrichment
+- [x] User authentication
+- [x] Shareable day image export
 - [ ] OSM Nominatim fallback (free tier)
-- [ ] Weather data enrichment
 - [ ] Spotify integration
-- [ ] Photo integration
-- [ ] User authentication
+- [ ] Google Photos integration
 
 ## License
 

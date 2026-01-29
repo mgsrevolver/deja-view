@@ -55,4 +55,25 @@ export async function uploadFile(endpoint, formData) {
   return response.json()
 }
 
+// Fetch binary data (images, etc.) with auth
+export async function fetchBlobWithAuth(endpoint) {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  const headers = {}
+
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`
+  }
+
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`
+
+  const response = await fetch(url, { headers })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  return response.blob()
+}
+
 export { API_BASE }

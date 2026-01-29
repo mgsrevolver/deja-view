@@ -2,7 +2,7 @@
 
 **Project Name**: Deja View _(You've been here before)_
 **Last Updated**: 2026-01-29
-**Current Phase**: Phase 6 - Polish & Integrations
+**Current Phase**: Phase 7 - Polish & Integrations
 
 ---
 
@@ -98,6 +98,15 @@
 - Clickable first/last visit dates for navigation
 - Photo thumbnails in timeline items
 
+### Phase 6 - Share Image
+- Shareable day image generation (1080x1080 Instagram square)
+- Polaroid-style stacked photo layout
+- Server-side rendering with Sharp
+- Privacy controls: select places, toggle times/durations/names
+- Poppins font for modern typography
+- Images stored for later retrieval
+- See `prd-2026-01-29-share-image.md` for full spec
+
 ---
 
 ## Current Stats
@@ -113,12 +122,12 @@
 
 ## Next Steps
 
-### Phase 6 - Polish & Integrations (Current)
+### Phase 7 - Polish & Integrations (Current)
 1. **OSM Nominatim fallback** - For 171 failed Place IDs (expired businesses)
-2. **UI polish** - Any remaining rough edges
+2. **Share image polish** - Improve layout, add more customization
 3. **Performance optimization** - Large day loading, calendar rendering
 
-### Phase 7 - Tier 2 Access (Non-technical users)
+### Phase 8 - Tier 2 Access (Non-technical users)
 - OAuth flow for Google Cloud connection, OR
 - Prepaid credits system, OR
 - Partner pricing with Google
@@ -303,7 +312,7 @@ claude "Read PROJECT-STATUS.md. You have the [ROLE] role today."
 - React 19 frontend (Vite, React Query, Leaflet) on port 5173
 - Node/Express backend (Prisma ORM) on port 3001
 - Supabase PostgreSQL database
-- Currently in Phase 6: Polish & Integrations
+- Currently in Phase 7: Polish & Integrations
 
 **Responsibilities**:
 - Coordinate work between frontend and backend specialists
