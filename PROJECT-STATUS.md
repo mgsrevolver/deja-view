@@ -1,8 +1,8 @@
 # Project Status - Deja View
 
 **Project Name**: Deja View _(You've been here before)_
-**Last Updated**: 2026-01-29
-**Current Phase**: Phase 7 - Polish & Integrations
+**Last Updated**: 2026-01-30
+**Current Phase**: Phase 7 - Polish & Integrations (Mapbox migration complete)
 
 ---
 
@@ -107,6 +107,13 @@
 - Images stored for later retrieval
 - See `prd-2026-01-29-share-image.md` for full spec
 
+### Phase 7 - Mapbox Migration
+- Replaced Leaflet with Mapbox GL JS for improved performance and styling
+- Native vector tiles with dark theme (dark-v11 style)
+- GeoJSON-based path rendering with activity type coloring
+- Smooth animations and transitions
+- No backend changes required (API format unchanged)
+
 ---
 
 ## Current Stats
@@ -197,7 +204,7 @@ node scripts/enrich-places.js --limit=100
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 19, Vite, React Query, Leaflet, date-fns |
+| Frontend | React 19, Vite, React Query, Mapbox GL JS, date-fns |
 | Backend | Node.js, Express, Prisma |
 | Database | PostgreSQL (Supabase) |
 | APIs | Google Places (enrichment), Open-Meteo (weather) |

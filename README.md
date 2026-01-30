@@ -45,6 +45,17 @@ cd ../frontend && npm install && npm run dev
 # Open http://localhost:5173
 ```
 
+## Mapbox Setup
+
+The map requires a free Mapbox account:
+
+1. Create account at [mapbox.com](https://www.mapbox.com/)
+2. Copy your default public token (starts with `pk.`)
+3. Add to `frontend/.env.local`:
+   ```bash
+   VITE_MAPBOX_TOKEN=pk.eyJ1Ijoi...
+   ```
+
 ## Import Your Data
 
 1. Export your location history from [Google Takeout](https://takeout.google.com)
@@ -93,7 +104,7 @@ node scripts/enrich-places.js
 
 ## Tech Stack
 
-- **Frontend**: React 19, Vite, React Query, Leaflet, date-fns
+- **Frontend**: React 19, Vite, React Query, Mapbox GL JS, date-fns
 - **Backend**: Node.js, Express, Prisma
 - **Database**: PostgreSQL (Supabase)
 - **APIs**: Google Places, Open-Meteo (weather)

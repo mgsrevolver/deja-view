@@ -1,72 +1,21 @@
 import { useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet'
-import 'leaflet/dist/leaflet.css'
-import L from 'leaflet'
+import Map, { Marker, Source, Layer } from 'react-map-gl'
+import mapboxgl from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 
-// Fix Leaflet default marker icon issue
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-})
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
-// Custom marker icons with visit number
-const createIcon = (color, isSelected = false, number = null) => L.divIcon({
-  className: 'custom-marker',
-  html: isSelected
-    ? `<div style="
-        position: relative;
-        width: 36px;
-        height: 36px;
-      ">
-        <div style="
-          position: absolute;
-          inset: 0;
-          background: ${color};
-          border-radius: 50%;
-          opacity: 0.3;
-          animation: pulse 1.5s ease-in-out infinite;
-        "></div>
-        <div style="
-          position: absolute;
-          top: 6px;
-          left: 6px;
-          background: ${color};
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
-          border: 3px solid white;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-size: 11px;
-          font-weight: 600;
-          font-family: system-ui, sans-serif;
-        ">${number || ''}</div>
-      </div>`
-    : `<div style="
-        background: ${color};
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        border: 3px solid white;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 11px;
-        font-weight: 600;
-        font-family: system-ui, sans-serif;
-      ">${number || ''}</div>`,
-  iconSize: isSelected ? [36, 36] : [24, 24],
-  iconAnchor: isSelected ? [18, 18] : [12, 12],
-  popupAnchor: [0, -12]
-})
+// Activity type colors (unchanged)
+function getPathColor(activityType) {
+  const type = (activityType || '').toLowerCase()
+  if (type.includes('walk')) return '#34d399'      // green
+  if (type.includes('bik') || type.includes('cycl')) return '#2dd4bf'  // teal
+  if (type.includes('vehicle') || type.includes('driv')) return '#fb923c'  // coral/orange
+  if (type.includes('transit') || type.includes('train') || type.includes('bus') || type.includes('subway')) return '#60a5fa'  // soft blue
+  return '#9ca3af'  // warm gray
+}
 
+// Marker colors (unchanged)
 const colors = {
   home: '#34d399',      // green (matches --color-walk)
   work: '#60a5fa',      // soft blue (matches --blue)
@@ -78,63 +27,6 @@ function getColor(semanticType) {
   if (type.includes('home')) return colors.home
   if (type.includes('work')) return colors.work
   return colors.default
-}
-
-// Component to fit bounds when visits change
-function FitBounds({ visits, path }) {
-  const map = useMap()
-
-  useEffect(() => {
-    const points = [
-      ...visits.map(v => [v.lat, v.lon]),
-      ...path.map(p => [p.lat, p.lon])
-    ]
-
-    if (points.length > 0) {
-      const bounds = L.latLngBounds(points)
-      map.fitBounds(bounds, { padding: [50, 50] })
-    }
-  }, [visits, path, map])
-
-  return null
-}
-
-// Component to zoom to a selected visit, or fit all bounds when deselected
-function ZoomToVisit({ visit, visits, path }) {
-  const map = useMap()
-  const prevVisitRef = useRef(undefined)
-
-  useEffect(() => {
-    const hadPreviousVisit = prevVisitRef.current !== undefined && prevVisitRef.current !== null
-
-    if (visit) {
-      map.flyTo([visit.lat, visit.lon], 17, { duration: 0.8 })
-    } else if (hadPreviousVisit) {
-      // Only zoom out when actively deselecting (not on initial load)
-      const points = [
-        ...visits.map(v => [v.lat, v.lon]),
-        ...path.map(p => [p.lat, p.lon])
-      ]
-      if (points.length > 0) {
-        const bounds = L.latLngBounds(points)
-        map.flyToBounds(bounds, { padding: [50, 50], duration: 0.8 })
-      }
-    }
-
-    prevVisitRef.current = visit
-  }, [visit, visits, path, map])
-
-  return null
-}
-
-// Color path segments by activity type (Golden Hour palette)
-function getPathColor(activityType) {
-  const type = (activityType || '').toLowerCase()
-  if (type.includes('walk')) return '#34d399'      // green
-  if (type.includes('bik') || type.includes('cycl')) return '#2dd4bf'  // teal
-  if (type.includes('vehicle') || type.includes('driv')) return '#fb923c'  // coral/orange
-  if (type.includes('transit') || type.includes('train') || type.includes('bus') || type.includes('subway')) return '#60a5fa'  // soft blue
-  return '#9ca3af'  // warm gray
 }
 
 // Weather mood colors (Golden Hour - warm tints)
@@ -149,29 +41,100 @@ function getWeatherMood(condition) {
 }
 
 export default function MapPane({ visits, path, isLoading, selectedVisit, onVisitClick, weatherCondition }) {
-  // Default center (will be overridden by FitBounds)
-  const defaultCenter = visits.length > 0
-    ? [visits[0].lat, visits[0].lon]
-    : [39.95, -75.16] // Philadelphia default
+  const mapRef = useRef()
+  const prevSelectedRef = useRef(undefined)
 
-  const weatherMood = getWeatherMood(weatherCondition)
+  // Default center
+  const initialViewState = {
+    longitude: visits.length > 0 ? visits[0].lon : -75.16,
+    latitude: visits.length > 0 ? visits[0].lat : 39.95,
+    zoom: 13
+  }
 
-  // Group path into segments by activity type
-  const pathSegments = []
+  // Fit bounds when visits/path change
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current.getMap()
+
+    const points = [
+      ...visits.map(v => [v.lon, v.lat]),
+      ...path.map(p => [p.lon, p.lat])
+    ]
+
+    if (points.length === 0) return
+
+    const bounds = points.reduce(
+      (b, coord) => b.extend(coord),
+      new mapboxgl.LngLatBounds()
+    )
+    map.fitBounds(bounds, { padding: 50, duration: 1000 })
+  }, [visits, path])
+
+  // Fly to selected visit
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current.getMap()
+    const hadPrevious = prevSelectedRef.current !== undefined && prevSelectedRef.current !== null
+
+    if (selectedVisit) {
+      map.flyTo({
+        center: [selectedVisit.lon, selectedVisit.lat],
+        zoom: 17,
+        duration: 800
+      })
+    } else if (hadPrevious) {
+      // Zoom back out
+      const points = [
+        ...visits.map(v => [v.lon, v.lat]),
+        ...path.map(p => [p.lon, p.lat])
+      ]
+      if (points.length > 0) {
+        const bounds = points.reduce(
+          (b, coord) => b.extend(coord),
+          new mapboxgl.LngLatBounds()
+        )
+        map.fitBounds(bounds, { padding: 50, duration: 800 })
+      }
+    }
+
+    prevSelectedRef.current = selectedVisit
+  }, [selectedVisit, visits, path])
+
+  // Build GeoJSON for path segments
+  const pathGeoJSON = {
+    type: 'FeatureCollection',
+    features: []
+  }
+
   let currentSegment = []
   let currentType = null
-
   for (const point of path) {
     if (point.activityType !== currentType && currentSegment.length > 0) {
-      pathSegments.push({ points: currentSegment, type: currentType })
+      pathGeoJSON.features.push({
+        type: 'Feature',
+        properties: { color: getPathColor(currentType) },
+        geometry: {
+          type: 'LineString',
+          coordinates: currentSegment
+        }
+      })
       currentSegment = []
     }
-    currentSegment.push([point.lat, point.lon])
+    currentSegment.push([point.lon, point.lat])
     currentType = point.activityType
   }
   if (currentSegment.length > 0) {
-    pathSegments.push({ points: currentSegment, type: currentType })
+    pathGeoJSON.features.push({
+      type: 'Feature',
+      properties: { color: getPathColor(currentType) },
+      geometry: {
+        type: 'LineString',
+        coordinates: currentSegment
+      }
+    })
   }
+
+  const weatherMood = getWeatherMood(weatherCondition)
 
   return (
     <div className="map-container">
@@ -189,48 +152,57 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
         />
       )}
 
-      <MapContainer
-        center={defaultCenter}
-        zoom={13}
-        style={{ height: '100%', width: '100%' }}
+      <Map
+        ref={mapRef}
+        mapboxAccessToken={MAPBOX_TOKEN}
+        initialViewState={initialViewState}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle="mapbox://styles/mapbox/dark-v11"
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        />
-
-        <FitBounds visits={visits} path={path} />
-        <ZoomToVisit visit={selectedVisit} visits={visits} path={path} />
-
-        {/* Draw path segments colored by activity */}
-        {pathSegments.map((segment, idx) => (
-          <Polyline
-            key={idx}
-            positions={segment.points}
-            color={getPathColor(segment.type)}
-            weight={4}
-            opacity={0.7}
+        {/* Path lines */}
+        <Source id="path" type="geojson" data={pathGeoJSON}>
+          <Layer
+            id="path-line"
+            type="line"
+            paint={{
+              'line-color': ['get', 'color'],
+              'line-width': 4,
+              'line-opacity': 0.7
+            }}
           />
-        ))}
+        </Source>
 
         {/* Visit markers */}
         {visits.map((visit, idx) => {
           const isSelected = selectedVisit?.id === visit.id
           const color = getColor(visit.semanticType)
           const visitNumber = idx + 1
+
           return (
             <Marker
               key={visit.id || idx}
-              position={[visit.lat, visit.lon]}
-              icon={createIcon(color, isSelected, visitNumber)}
-              zIndexOffset={isSelected ? 1000 : 0}
-              eventHandlers={{
-                click: () => onVisitClick(isSelected ? null : visit)
+              longitude={visit.lon}
+              latitude={visit.lat}
+              anchor="center"
+              onClick={(e) => {
+                e.originalEvent.stopPropagation()
+                onVisitClick(isSelected ? null : visit)
               }}
-            />
+            >
+              <div
+                className={`map-marker ${isSelected ? 'selected' : ''}`}
+                style={{
+                  background: color,
+                  width: isSelected ? 36 : 24,
+                  height: isSelected ? 36 : 24,
+                }}
+              >
+                {visitNumber}
+              </div>
+            </Marker>
           )
         })}
-      </MapContainer>
+      </Map>
     </div>
   )
 }
