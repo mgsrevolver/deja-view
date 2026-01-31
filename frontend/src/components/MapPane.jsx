@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import Map, { Marker, Source, Layer } from 'react-map-gl'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import HistoryLayer from './HistoryLayer'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -40,7 +41,18 @@ function getWeatherMood(condition) {
   return null
 }
 
-export default function MapPane({ visits, path, isLoading, selectedVisit, onVisitClick, weatherCondition }) {
+export default function MapPane({
+  visits,
+  path,
+  isLoading,
+  selectedVisit,
+  onVisitClick,
+  weatherCondition,
+  historyPlaces,
+  historyMode,
+  onHistoryPlaceClick,
+  onMapMove
+}) {
   const mapRef = useRef()
   const prevSelectedRef = useRef(undefined)
 
@@ -136,6 +148,48 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
 
   const weatherMood = getWeatherMood(weatherCondition)
 
+  // Handle map move for viewport tracking
+  const handleMoveEnd = useCallback((evt) => {
+    if (!onMapMove) return
+    const bounds = evt.target.getBounds()
+    onMapMove({
+      north: bounds.getNorth(),
+      south: bounds.getSouth(),
+      east: bounds.getEast(),
+      west: bounds.getWest()
+    })
+  }, [onMapMove])
+
+  // Handle clicks on history layer
+  const handleMapClick = useCallback((e) => {
+    if (historyMode !== 'active') return
+    if (!e.features || e.features.length === 0) return
+
+    const feature = e.features[0]
+
+    if (feature.layer.id === 'history-clusters') {
+      // Zoom into cluster
+      const clusterId = feature.properties.cluster_id
+      const source = e.target.getSource('history')
+      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (err) return
+        e.target.easeTo({
+          center: feature.geometry.coordinates,
+          zoom: zoom
+        })
+      })
+    } else if (feature.layer.id === 'history-points') {
+      // Find the full place data from historyPlaces
+      const placeId = feature.properties.placeId
+      const place = historyPlaces?.find(p => p.placeId === placeId)
+      if (place && onHistoryPlaceClick) {
+        onHistoryPlaceClick(place)
+      }
+    }
+  }, [historyMode, historyPlaces, onHistoryPlaceClick])
+
+  const isHistoryActive = historyMode === 'active'
+
   return (
     <div className="map-container">
       {isLoading && (
@@ -158,24 +212,38 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
         initialViewState={initialViewState}
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/dark-v11"
+        onMoveEnd={handleMoveEnd}
+        onClick={handleMapClick}
+        interactiveLayerIds={isHistoryActive ? ['history-clusters', 'history-points'] : []}
         onLoad={(e) => {
           const map = e.target
 
           // Filter to notable POIs only (hide commercial clutter)
-          map.setFilter('poi-label', [
-            'in', 'class',
-            'landmark',
-            'park',
-            'food_and_drink',
-            'lodging'
-          ])
+          // dark-v11 uses 'class' property with these values
+          try {
+            map.setFilter('poi-label', [
+              'match',
+              ['get', 'class'],
+              ['landmark', 'park', 'food_and_drink', 'lodging', 'restaurant', 'cafe', 'bar'],
+              true,
+              false
+            ])
 
-          // Style POI labels to match app accent color
-          map.setPaintProperty('poi-label', 'text-color', '#f59e0b')
-          map.setPaintProperty('poi-label', 'text-halo-color', '#1a1a2e')
-          map.setPaintProperty('poi-label', 'text-halo-width', 1)
+            // Style POI labels to match app accent color
+            map.setPaintProperty('poi-label', 'text-color', '#f59e0b')
+            map.setPaintProperty('poi-label', 'text-halo-color', '#1a1a2e')
+            map.setPaintProperty('poi-label', 'text-halo-width', 1)
+          } catch (err) {
+            console.warn('POI layer styling failed:', err.message)
+          }
         }}
       >
+        {/* History layer - behind everything else */}
+        <HistoryLayer
+          places={historyPlaces}
+          isActive={isHistoryActive}
+        />
+
         {/* Path lines */}
         <Source id="path" type="geojson" data={pathGeoJSON}>
           <Layer
@@ -222,11 +290,12 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
               }}
             >
               <div
-                className={`map-marker ${isSelected ? 'selected' : ''}`}
+                className={`map-marker ${isSelected ? 'selected' : ''} ${isHistoryActive ? 'history-mode' : ''}`}
                 style={{
                   background: color,
                   width: isSelected ? 36 : 24,
                   height: isSelected ? 36 : 24,
+                  opacity: isHistoryActive && !isSelected ? 0.7 : 1,
                 }}
               >
                 {visitNumber}

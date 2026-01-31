@@ -62,6 +62,7 @@ model Visit {
   @@index([userId, startTime]) // Primary query pattern
   @@index([userId, placeID])   // User's visits to a place
   @@index([placeID])           // Keep for place-level queries
+  @@index([userId, lat, lon])  // Viewport queries for history layer
 }
 
 // Unique places (enriched with Google Places API data)

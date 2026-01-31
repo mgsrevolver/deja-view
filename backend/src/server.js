@@ -519,6 +519,120 @@ app.get('/api/places/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// Get visits within a geographic viewport (for history layer)
+app.get('/api/visits/viewport', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { north, south, east, west, excludeDate, tz } = req.query;
+
+    // Validate required params
+    if (!north || !south || !east || !west) {
+      return res.status(400).json({
+        error: 'Missing required parameters: north, south, east, west'
+      });
+    }
+
+    const northFloat = parseFloat(north);
+    const southFloat = parseFloat(south);
+    const eastFloat = parseFloat(east);
+    const westFloat = parseFloat(west);
+
+    // Validate bounds
+    if (isNaN(northFloat) || isNaN(southFloat) || isNaN(eastFloat) || isNaN(westFloat)) {
+      return res.status(400).json({
+        error: 'Invalid bounds: north, south, east, west must be valid numbers'
+      });
+    }
+
+    // Build where clause
+    const whereClause = {
+      userId,
+      lat: { gte: southFloat, lte: northFloat },
+      lon: { gte: westFloat, lte: eastFloat }
+    };
+
+    // Exclude current day if specified
+    if (excludeDate) {
+      const { dayStart, dayEnd } = getDayBoundaries(excludeDate, tz);
+      whereClause.NOT = {
+        startTime: {
+          gte: dayStart,
+          lte: dayEnd
+        }
+      };
+    }
+
+    // Query visits within bounding box
+    const visits = await prisma.visit.findMany({
+      where: whereClause,
+      include: {
+        place: {
+          select: {
+            id: true,
+            name: true,
+            defaultImageUrl: true
+          }
+        }
+      },
+      orderBy: { startTime: 'desc' }
+    });
+
+    // Group by place
+    const placeMap = new Map();
+
+    for (const visit of visits) {
+      const placeId = visit.placeID;
+      if (!placeMap.has(placeId)) {
+        placeMap.set(placeId, {
+          placeId,
+          lat: visit.lat,
+          lon: visit.lon,
+          name: visit.place?.name || 'Unknown',
+          photoUrl: visit.place?.defaultImageUrl || null,
+          visits: [],
+          totalMinutes: 0
+        });
+      }
+
+      const place = placeMap.get(placeId);
+      place.visits.push({
+        date: toLocalDateString(visit.startTime, tz),
+        startTime: formatTimeForViewport(visit.startTime, tz),
+        duration: visit.durationMinutes || 0
+      });
+      place.totalMinutes += visit.durationMinutes || 0;
+    }
+
+    // Compute aggregates and format response
+    const places = Array.from(placeMap.values()).map(place => ({
+      placeId: place.placeId,
+      lat: place.lat,
+      lon: place.lon,
+      name: place.name,
+      photoUrl: place.photoUrl,
+      visitCount: place.visits.length,
+      totalMinutes: place.totalMinutes,
+      firstVisit: place.visits[place.visits.length - 1]?.date || null,
+      lastVisit: place.visits[0]?.date || null,
+      visits: place.visits.slice(0, 50) // Cap at 50 most recent
+    }));
+
+    // Sort by visit count (most visited first)
+    places.sort((a, b) => b.visitCount - a.visitCount);
+
+    res.json({
+      places,
+      summary: {
+        totalPlaces: places.length,
+        totalVisits: visits.length
+      }
+    });
+  } catch (error) {
+    console.error('[VIEWPORT] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 /**
  * Run background enrichment for a user
  * Enriches weather for all days without weather data
@@ -1043,6 +1157,26 @@ function getMonthBoundaries(monthStr, tz) {
   const { dayEnd: endOfMonth } = getDayBoundaries(lastDayStr, tz);
 
   return { startOfMonth, endOfMonth };
+}
+
+/**
+ * Format a timestamp to HH:MM in the given timezone
+ * @param {Date} date - UTC date
+ * @param {string} tz - IANA timezone
+ * @returns {string} Time string (HH:MM)
+ */
+function formatTimeForViewport(date, tz) {
+  if (!date) return null;
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz || 'UTC',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(11, 16);
+  }
 }
 
 // Haversine distance calculation (meters)

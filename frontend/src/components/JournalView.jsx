@@ -7,7 +7,9 @@ import Sidebar from './Sidebar'
 import CalendarPicker from './CalendarPicker'
 import ImportModal from './ImportModal'
 import ShareModal from './ShareModal'
-import { useState, useMemo } from 'react'
+import PlaceHistoryModal from './PlaceHistoryModal'
+import { useState, useMemo, useCallback } from 'react'
+import debounce from 'lodash.debounce'
 
 function getWeatherIcon(condition) {
   const c = (condition || '').toLowerCase()
@@ -27,6 +29,9 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
   const [showImport, setShowImport] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [selectedVisit, setSelectedVisit] = useState(null)
+  const [historyMode, setHistoryMode] = useState('passive')
+  const [viewport, setViewport] = useState(null)
+  const [selectedHistoryPlace, setSelectedHistoryPlace] = useState(null)
   const queryClient = useQueryClient()
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -41,6 +46,53 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
     queryClient.invalidateQueries(['day'])
     setShowImport(false)
   }
+
+  // Debounced viewport update
+  const handleMapMove = useMemo(
+    () => debounce((bounds) => {
+      setViewport(bounds)
+    }, 300),
+    []
+  )
+
+  // Fetch history for viewport
+  const { data: historyData } = useQuery({
+    queryKey: ['viewport-history', viewport, selectedDate],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        north: viewport.north,
+        south: viewport.south,
+        east: viewport.east,
+        west: viewport.west,
+        tz
+      })
+      if (selectedDate) {
+        params.set('excludeDate', selectedDate)
+      }
+      return fetchWithAuth(`/api/visits/viewport?${params}`)
+    },
+    enabled: !!viewport,
+    staleTime: 60000
+  })
+
+  // Toggle history mode
+  const toggleHistoryMode = useCallback(() => {
+    setHistoryMode(prev => prev === 'passive' ? 'active' : 'passive')
+    setSelectedHistoryPlace(null)
+  }, [])
+
+  // Handle clicking a history place
+  const handleHistoryPlaceClick = useCallback((place) => {
+    setSelectedHistoryPlace(place)
+  }, [])
+
+  // Navigate to date from history modal
+  const handleHistoryNavigate = useCallback((date) => {
+    setSelectedHistoryPlace(null)
+    setHistoryMode('passive')
+    setSelectedVisit(null)
+    onDateChange(date)
+  }, [onDateChange])
 
   // Fetch day data when date is selected
   const { data: dayData, isLoading } = useQuery({
@@ -163,6 +215,10 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
             selectedVisit={selectedVisit}
             onVisitClick={setSelectedVisit}
             weatherCondition={dayData?.weather?.condition}
+            historyPlaces={historyData?.places}
+            historyMode={historyMode}
+            onHistoryPlaceClick={handleHistoryPlaceClick}
+            onMapMove={handleMapMove}
           />
         </div>
 
@@ -203,6 +259,15 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
           dayData={dayData}
           date={selectedDate}
           onClose={() => setShowShare(false)}
+        />
+      )}
+
+      {/* Place history modal */}
+      {selectedHistoryPlace && (
+        <PlaceHistoryModal
+          place={selectedHistoryPlace}
+          onClose={() => setSelectedHistoryPlace(null)}
+          onNavigateToDate={handleHistoryNavigate}
         />
       )}
     </div>
