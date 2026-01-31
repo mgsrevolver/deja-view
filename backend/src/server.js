@@ -114,6 +114,58 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Backfill place lat/lon from visits (one-time migration)
+app.post('/api/admin/backfill-place-coords', authMiddleware, async (req, res) => {
+  try {
+    console.log('[BACKFILL] Starting place coordinates backfill...');
+
+    // Find places without lat/lon
+    const placesWithoutCoords = await prisma.place.findMany({
+      where: {
+        OR: [
+          { lat: null },
+          { lon: null }
+        ]
+      },
+      select: { id: true }
+    });
+
+    console.log(`[BACKFILL] Found ${placesWithoutCoords.length} places without coordinates`);
+
+    let updated = 0;
+    for (const place of placesWithoutCoords) {
+      // Get first visit for this place to get coordinates
+      const firstVisit = await prisma.visit.findFirst({
+        where: { placeID: place.id },
+        orderBy: { startTime: 'asc' },
+        select: { lat: true, lon: true }
+      });
+
+      if (firstVisit) {
+        await prisma.place.update({
+          where: { id: place.id },
+          data: {
+            lat: firstVisit.lat,
+            lon: firstVisit.lon
+          }
+        });
+        updated++;
+      }
+    }
+
+    console.log(`[BACKFILL] Updated ${updated} places with coordinates`);
+
+    res.json({
+      success: true,
+      placesChecked: placesWithoutCoords.length,
+      placesUpdated: updated
+    });
+  } catch (error) {
+    console.error('[BACKFILL] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Test database connection
 app.get('/api/test-db', async (req, res) => {
   try {
@@ -440,6 +492,158 @@ app.get('/api/interesting-day', authMiddleware, async (req, res) => {
   }
 });
 
+// Get top places ranked by visit count or time spent
+app.get('/api/places/top', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sortBy = 'visits', limit = '10', offset = '0', search, tz } = req.query;
+    const limitNum = Math.min(parseInt(limit) || 10, 100);
+    const offsetNum = parseInt(offset) || 0;
+
+    // Step 1: Aggregate visits by place for this user
+    const placesAgg = await prisma.visit.groupBy({
+      by: ['placeID'],
+      where: { userId },
+      _count: { id: true },
+      _sum: { durationMinutes: true },
+      _min: { startTime: true, lat: true, lon: true },
+      _max: { startTime: true }
+    });
+
+    // Step 2: Get all place details for matching places
+    const allPlaceIds = placesAgg.map(p => p.placeID);
+    const places = await prisma.place.findMany({
+      where: { id: { in: allPlaceIds } },
+      select: { id: true, name: true, defaultImageUrl: true, lat: true, lon: true }
+    });
+    const placeMap = new Map(places.map(p => [p.id, p]));
+
+    // Step 3: Merge and filter by search
+    let merged = placesAgg.map(agg => {
+      const place = placeMap.get(agg.placeID) || {};
+      return {
+        placeId: agg.placeID,
+        lat: place.lat || agg._min.lat,
+        lon: place.lon || agg._min.lon,
+        name: place.name || 'Unknown',
+        photoUrl: place.defaultImageUrl || null,
+        visitCount: agg._count.id,
+        totalMinutes: agg._sum.durationMinutes || 0,
+        firstVisit: toLocalDateString(agg._min.startTime, tz),
+        lastVisit: toLocalDateString(agg._max.startTime, tz)
+      };
+    });
+
+    // Filter by search if provided
+    if (search) {
+      const searchLower = search.toLowerCase();
+      merged = merged.filter(p => p.name.toLowerCase().includes(searchLower));
+    }
+
+    // Step 4: Sort by chosen metric
+    merged.sort((a, b) => {
+      if (sortBy === 'time') {
+        return b.totalMinutes - a.totalMinutes;
+      }
+      return b.visitCount - a.visitCount;
+    });
+
+    const total = merged.length;
+    const paginated = merged.slice(offsetNum, offsetNum + limitNum);
+
+    res.json({
+      places: paginated,
+      pagination: {
+        total,
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + limitNum < total
+      }
+    });
+  } catch (error) {
+    console.error('[TOP PLACES] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get paginated visits for a specific place
+app.get('/api/places/:id/visits', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id: placeId } = req.params;
+    const { limit = '50', offset = '0', tz } = req.query;
+    const limitNum = Math.min(parseInt(limit) || 50, 100);
+    const offsetNum = parseInt(offset) || 0;
+
+    // Get place details and visit aggregates in parallel
+    const [place, visits, countResult] = await Promise.all([
+      prisma.place.findUnique({
+        where: { id: placeId },
+        select: { id: true, name: true, defaultImageUrl: true, lat: true, lon: true }
+      }),
+      prisma.visit.findMany({
+        where: { userId, placeID: placeId },
+        orderBy: { startTime: 'desc' },
+        skip: offsetNum,
+        take: limitNum,
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+          durationMinutes: true,
+          lat: true,
+          lon: true
+        }
+      }),
+      prisma.visit.aggregate({
+        where: { userId, placeID: placeId },
+        _count: { id: true },
+        _sum: { durationMinutes: true },
+        _min: { startTime: true, lat: true, lon: true },
+        _max: { startTime: true }
+      })
+    ]);
+
+    if (!place) {
+      return res.status(404).json({ error: 'Place not found' });
+    }
+
+    // Use place lat/lon if available, otherwise fall back to first visit
+    const lat = place.lat || countResult._min.lat;
+    const lon = place.lon || countResult._min.lon;
+
+    res.json({
+      place: {
+        placeId: place.id,
+        lat,
+        lon,
+        name: place.name || 'Unknown',
+        photoUrl: place.defaultImageUrl || null,
+        visitCount: countResult._count.id,
+        totalMinutes: countResult._sum.durationMinutes || 0,
+        firstVisit: toLocalDateString(countResult._min.startTime, tz),
+        lastVisit: toLocalDateString(countResult._max.startTime, tz)
+      },
+      visits: visits.map(v => ({
+        id: v.id,
+        date: toLocalDateString(v.startTime, tz),
+        startTime: formatTimeForViewport(v.startTime, tz),
+        endTime: v.endTime ? formatTimeForViewport(v.endTime, tz) : null,
+        duration: v.durationMinutes || 0
+      })),
+      pagination: {
+        total: countResult._count.id,
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + limitNum < countResult._count.id
+      }
+    });
+  } catch (error) {
+    console.error('[PLACE VISITS] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get place details with user-specific visit statistics
 app.get('/api/places/:id', authMiddleware, async (req, res) => {
   try {
@@ -494,6 +698,8 @@ app.get('/api/places/:id', authMiddleware, async (req, res) => {
 
     res.json({
       id: place.id,
+      lat: place.lat,
+      lon: place.lon,
       name: place.name,
       address: place.address,
       imageUrl: place.defaultImageUrl,

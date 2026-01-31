@@ -69,6 +69,10 @@ model Visit {
 model Place {
   id              String   @id // Google Place ID
 
+  // Location (populated from first visit)
+  lat             Float?
+  lon             Float?
+
   // Google Places API data (enriched after import)
   name            String?
   defaultImageUrl String?

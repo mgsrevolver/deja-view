@@ -290,12 +290,11 @@ export default function MapPane({
               }}
             >
               <div
-                className={`map-marker ${isSelected ? 'selected' : ''} ${isHistoryActive ? 'history-mode' : ''}`}
+                className={`map-marker ${isSelected ? 'selected' : ''} ${isHistoryActive ? 'mist-mode' : ''}`}
                 style={{
                   background: color,
                   width: isSelected ? 36 : 24,
                   height: isSelected ? 36 : 24,
-                  opacity: isHistoryActive && !isSelected ? 0.7 : 1,
                 }}
               >
                 {visitNumber}

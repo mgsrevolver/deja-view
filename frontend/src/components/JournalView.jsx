@@ -75,12 +75,6 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
     staleTime: 60000
   })
 
-  // Toggle history mode
-  const toggleHistoryMode = useCallback(() => {
-    setHistoryMode(prev => prev === 'passive' ? 'active' : 'passive')
-    setSelectedHistoryPlace(null)
-  }, [])
-
   // Handle clicking a history place
   const handleHistoryPlaceClick = useCallback((place) => {
     setSelectedHistoryPlace(place)
@@ -208,6 +202,22 @@ export default function JournalView({ selectedDate, onDateChange, stats }) {
       {/* Main content - split view (map small, sidebar large) */}
       <main className="journal-main">
         <div className="map-pane">
+          {/* Layer toggle above map */}
+          <div className="layer-toggle">
+            <button
+              className={`layer-btn ${historyMode === 'passive' ? 'active' : ''}`}
+              onClick={() => setHistoryMode('passive')}
+            >
+              Day
+            </button>
+            <button
+              className={`layer-btn layer-btn-history ${historyMode === 'active' ? 'active' : ''}`}
+              onClick={() => setHistoryMode('active')}
+            >
+              All-Time
+            </button>
+          </div>
+
           <MapPane
             visits={dayData?.visits || []}
             path={dayData?.path || []}
