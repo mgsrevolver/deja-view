@@ -158,6 +158,23 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
         initialViewState={initialViewState}
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/dark-v11"
+        onLoad={(e) => {
+          const map = e.target
+
+          // Filter to notable POIs only (hide commercial clutter)
+          map.setFilter('poi-label', [
+            'in', 'class',
+            'landmark',
+            'park',
+            'food_and_drink',
+            'lodging'
+          ])
+
+          // Style POI labels to match app accent color
+          map.setPaintProperty('poi-label', 'text-color', '#f59e0b')
+          map.setPaintProperty('poi-label', 'text-halo-color', '#1a1a2e')
+          map.setPaintProperty('poi-label', 'text-halo-width', 1)
+        }}
       >
         {/* Path lines */}
         <Source id="path" type="geojson" data={pathGeoJSON}>
@@ -171,6 +188,21 @@ export default function MapPane({ visits, path, isLoading, selectedVisit, onVisi
             }}
           />
         </Source>
+
+        {/* 3D Buildings - only visible at zoom 14+ */}
+        <Layer
+          id="3d-buildings"
+          source="composite"
+          source-layer="building"
+          type="fill-extrusion"
+          minzoom={14}
+          paint={{
+            'fill-extrusion-color': '#1a1a2e',
+            'fill-extrusion-height': ['get', 'height'],
+            'fill-extrusion-base': ['get', 'min_height'],
+            'fill-extrusion-opacity': 0.6
+          }}
+        />
 
         {/* Visit markers */}
         {visits.map((visit, idx) => {
